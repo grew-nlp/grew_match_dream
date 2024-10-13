@@ -2,8 +2,8 @@ open Printf
 open Conll
 open Grewlib
 
-exception Error of string
-let _error s = raise (Error (sprintf "%s\n%!" s))
+exception Error of Yojson.Basic.t
+let _error s = raise (Error (`String (sprintf "%s\n%!" s)))
 let error s = Printf.ksprintf _error s
 
 let _stop s = 
@@ -59,6 +59,10 @@ module Dream_config = struct
     | Some (`Int value) -> value
     | Some _ -> error "config for key `%s` must be of type int" key
     | None -> error "Undefined config for key `%s`" key
+  
+  let get_env () =
+    List.map (fun (k,j) -> (k, Yojson.Basic.to_string j)) !current
+
 end
 
 (* ================================================================================ *)
@@ -110,7 +114,7 @@ let wrap fct last_arg =
       | [] -> `Assoc [ ("status", `String "OK"); ("data", data) ]
       | l -> `Assoc [ ("status", `String "WARNING"); ("messages", `List l); ("data", data) ]
     with
-    | Error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]
+    | Error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
     | Sys_error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]
     | Conll_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
     | Grewlib.Error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]

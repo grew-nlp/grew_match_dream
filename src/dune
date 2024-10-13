@@ -1,7 +1,7 @@
 (executable
  (public_name grew_match_dream)
  (name main)
- (libraries yojson dream ANSITerminal conll grewlib)
+ (libraries yojson dream ANSITerminal conll dep2pictlib grewlib)
  (preprocess (pps lwt_ppx))
 )
 
