@@ -1,0 +1,5 @@
+{
+	"port": 8080,
+	"prefix": "grew_match_dream",
+	"log": "/Users/guillaum/github/grew-nlp/grew_match_dream/log"
+}
