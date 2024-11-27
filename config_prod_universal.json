@@ -1,0 +1,7 @@
+{
+	"port": 10001,
+	"prefix": "gmd-universal",
+	"corpusbank": "/home/guillaum/resources/github.com/grew-nlp/corpusbank",
+	"log": "/home/guillaum/resources/github.com/grew-nlp/grew_match_dream/log",
+	"storage": "/home/guillaum/resources/github.com/grew-nlp/grew_match_dream/static"
+}
