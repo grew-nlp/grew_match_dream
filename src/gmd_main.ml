@@ -12,7 +12,10 @@ open Gmd_types
 (* ============================================================================================================================ *)
 let search param =
   let start_time = Unix.gettimeofday () in
-  let _ = Draw_config.update param in
+
+  let display = get_attr "display" param in
+
+  let _ = Draw_config.update display in
 
   let uuid = php_uniqid () in
   let _ = Unix.mkdir (datadir uuid) 0o755 in
@@ -21,11 +24,15 @@ let search param =
   let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
   let config = Corpus_desc.get_config corpus_desc in
   let request = Request.parse ~config (get_string_attr "request" param) in
-  let clust_item_list = List.map (Request.parse_cluster_item ~config request) (get_clust_item_list param) in
+
+  let clust_item_list =
+    get_attr "clust" param
+    |> get_clust_item_list
+    |> (List.map (Request.parse_cluster_item ~config request)) in
 
   let (clusters_list, status, ratio) =
     Corpus.bounded_search
-      ~config ~ordering:(get_string_attr_opt "order" param) (Some Global.max_results) (Some Global.timeout_search) [] 
+      ~config ~ordering:(get_string_attr_opt "order" display) (Some Global.max_results) (Some Global.timeout_search) [] 
       (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
         {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
         request clust_item_list corpus in
@@ -139,7 +146,10 @@ let count param =
   let string_request = get_string_attr "request" param in
   let request = Request.parse ~config string_request in
 
-  let clust_item_list = List.map (Request.parse_cluster_item ~config request) (get_clust_item_list param) in
+  let clust_item_list =
+    get_attr "clust" param
+    |> get_clust_item_list
+    |> (List.map (Request.parse_cluster_item ~config request)) in
 
   let clusters = Corpus.search ~config 0 (fun _ _ _ x -> x+1) request clust_item_list corpus in
   let sizes = Clustered.sizes (fun x -> x) clusters in

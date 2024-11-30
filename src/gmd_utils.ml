@@ -92,6 +92,17 @@ end
 (* ================================================================================ *)
 (* Misc functions *)
 (* ================================================================================ *)
+let get_attr_opt field json =
+  let open Yojson.Basic.Util in
+    match json |> member field with
+    | `Null -> None
+    | j -> Some j
+
+let get_attr field json =
+  match get_attr_opt field json with
+  | Some s -> s
+  | None -> raise (Error (`Assoc [("message", `String (sprintf "No field `%s`" field)); ("json", json)]))
+
 let get_string_attr_opt field json =
   let open Yojson.Basic.Util in
   try json |> member field |> to_string_option
@@ -152,15 +163,15 @@ let get_bool_attr_opt field json =
     )
 
 let get_clust_item_list param = 
-  (match (get_string_attr_opt "clust1" param, get_string_attr_opt "clust1_data" param) with
-  | (Some "key", Some v) -> [v]
-  | (Some "whether", Some v) -> [sprintf "{%s}" v]
-  | _ -> [])
+  (match (get_string_attr_opt "clust1_key" param, get_string_attr_opt "clust1_whether" param) with
+  | (None, None) -> []
+  | (Some k, _) -> [k]
+  | (_, Some w) -> [sprintf "{%s}" w])
   @
-  (match (get_string_attr_opt "clust2" param, get_string_attr_opt "clust2_data" param) with
-  | (Some "key", Some v) -> [v]
-  | (Some "whether", Some v) -> [sprintf "{%s}" v]
-  | _ -> [])
+  (match (get_string_attr_opt "clust2_key" param, get_string_attr_opt "clust2_whether" param) with
+  | (None, None) -> []
+  | (Some k, _) -> [k]
+  | (_, Some w) -> [sprintf "{%s}" w])
 
 let json_values_sizes values_sizes =
   `List
