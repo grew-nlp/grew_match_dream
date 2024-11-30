@@ -1,6 +1,6 @@
 {
-	"port": 10001,
-	"prefix": "gmd-universal",
+	"port": 10002,
+	"prefix": "gmd-parseme",
 	"corpusbank": "/Users/guillaum/github/grew-nlp/corpusbank",
 	"log": "/Users/guillaum/github/grew-nlp/grew_match_dream/log",
 	"storage": "/Users/guillaum/github/grew-nlp/grew_match_dream/static"
