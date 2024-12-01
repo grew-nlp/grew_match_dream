@@ -93,7 +93,7 @@ let all_routes =
       ("get_build_file", get_build_file, true);
       ("more_results", more_results, true);
       ("search", search, true);
-      ("get_corpora_desc", get_corpora_desc, true);
+      ("get_corpora_desc", get_corpora_desc, false);
       ("conll", conll, true);
       ("count", count, true);
       ("save", save, true);
