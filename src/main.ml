@@ -92,8 +92,8 @@ let all_routes =
     ) basic_routes [
       ("get_build_file", get_build_file, true);
       ("more_results", more_results, true);
-      ("search", search, false);
-      ("get_corpora_desc", get_corpora_desc, false);
+      ("search", search, true);
+      ("get_corpora_desc", get_corpora_desc, true);
       ("conll", conll, true);
       ("count", count, true);
       ("save", save, true);
