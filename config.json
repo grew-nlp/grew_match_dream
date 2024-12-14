@@ -1,0 +1,7 @@
+{
+	"port": 4758,
+	"prefix": "gmd",
+	"corpusbank": "__DIR__/corpusbank",
+	"log": "__DIR__/grew_match_dream/log",
+	"storage": "__DIR__/grew_match_dream/static"
+}
