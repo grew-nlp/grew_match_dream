@@ -19,6 +19,19 @@ let report_status json =
   | "OK" -> "OK"
   | _ -> Yojson.Basic.pretty_to_string json
 
+(* [extend_path path] replaces each substring "${XXX}" in [path] by the value of the env variable XXX.
+   raise [Error] if some variable is undefined. *)
+let extend_path path =
+  Str.global_substitute
+    (Str.regexp {|\${\([^}]*\)}|})
+    (fun _ ->
+      let varname = Str.matched_group 1 path in
+        match Sys.getenv_opt varname with
+        | Some v -> v
+        | None -> error "Environment variable `%s` is undefined" varname
+    )
+    path
+
 (* ================================================================================ *)
 (* Dream_config *)
 (* ============================================================================================= *)
@@ -34,7 +47,13 @@ module Dream_config = struct
       current :=
         config_file
         |> Yojson.Basic.from_file
-        |> to_assoc;
+        |> to_assoc
+        |> List.map 
+          (function 
+          | (k, `String v) -> (k, `String (extend_path v))
+          | x -> x
+          )
+        ;
       match List.filter (fun k -> not (List.mem_assoc k !current)) required with
       | [] -> ()
       | l -> stop "In config file, missing parameter(s): %s" (String.concat ", " l)
