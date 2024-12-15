@@ -46,21 +46,19 @@ module Table = struct
   let init size =
     t := Array.make size None
 
-  let dump () =
-    printf "<====== table ======>\n";
-    Array.iter (function None -> printf "N" | _ -> printf "S") !t;
-    printf "\n<====== /table ======>\n%!"
-
   let refresh () =
-    Log.info "__intern__ Refresh table";
+    Log.start ();
+    let kept = ref 0 in
+    let free = ref 0 in
     for i = 0 to (Array.length !t) - 1 do
       match !t.(i) with
-      | Some (_,ts) when Unix.gettimeofday () -. ts > Global.timeout_request -> !t.(i) <- None
+      | Some (_,ts) when Unix.gettimeofday () -. ts > Global.timeout_request -> incr free; !t.(i) <- None
+      | Some _ -> incr kept;
       | _ -> ()
     done;
-    dump ();
-    Gc.major ()
-
+    Gc.major ();
+    Log.info "[INTERN] Refresh table: |free|=%d |kept|=%d" !free !kept;
+    ()
 
   let get_corpus corpus_id =
     match String_map.find_opt corpus_id !Global.corpora_map with
@@ -85,7 +83,8 @@ module Table = struct
   let refresh_all () =
     for i = 0 to (Array.length !t) - 1 do
       !t.(i) <- None
-    done
+    done;
+    Gc.major ();
 end
 
 (* ==================================================================================================== *)

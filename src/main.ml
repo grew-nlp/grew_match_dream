@@ -109,6 +109,7 @@ let _ =
     Dream_config.load ~required ();
     Log.init ?prefix:(Dream_config.get_string_opt "prefix") ();
     let _ = load_data () in
+    let _ = refresh () in
     Dream.run
     ~error_handler:Dream.debug_error_handler
     ~port: (Dream_config.get_int "port")
