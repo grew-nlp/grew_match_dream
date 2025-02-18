@@ -9,6 +9,23 @@ open Gmd_global
 open Gmd_utils
 open Gmd_types
 
+
+let reduce_arr arr = 
+  if Array.length arr <= Global.max_grid_size
+  then arr
+  else
+    let new_arr = Array.sub arr 0 (Global.folded_size+1) in
+    let merge_size = ref 0 in
+    Array.iteri (fun index (_,size) -> if index >= Global.folded_size then merge_size := !merge_size + size) arr;
+    new_arr.(Global.folded_size) <- (Some "__*__", !merge_size);
+    new_arr
+
+let filter arr =
+  if Array.length arr > Global.max_grid_size
+  then (fun x -> Array_.find arr (fun (e,_) -> e=x) < Global.folded_size)
+  else (fun _ -> true)
+
+
 (* ============================================================================================================================ *)
 let search param =
   let start_time = Unix.gettimeofday () in
@@ -32,12 +49,12 @@ let search param =
 
   let (clusters_list, status, ratio) =
     Corpus.bounded_search
-      ~config ~ordering:(get_string_attr_opt "order" display) (Some Global.max_results) (Some Global.timeout_search) [] 
+      ~config ~ordering:(get_string_attr_opt "order" display) (Some Global.max_results) (Some Global.timeout_search) []
       (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
         {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
         request clust_item_list corpus in
 
-  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0}) clusters_list in 
+  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0}) clusters_list in
   let sizes = Clustered.sizes (fun x -> Array.length x.Session.data) full_clusters in
   
   let (json_clusters, clusters) = 
@@ -53,43 +70,15 @@ let search param =
     Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_1; (* build an array in reverse size order *)
     Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
 
-    let filter_1 =
-      if Array.length arr_1 > Global.max_grid_size
-      then Some (fun x -> Array_.find arr_1 (fun (e,_) -> e=x) < Global.folded_size)
-      else None in
-    let filter_2 =
-      if Array.length arr_2 > Global.max_grid_size
-      then Some (fun x -> Array_.find arr_2 (fun (e,_) -> e=x) < Global.folded_size)
-      else None in
-
-    let reduce_arr arr = 
-      let new_arr = Array.sub arr 0 (Global.folded_size+1) in
-        let merge_size = ref 0 in
-        Array.iteri (fun index (_,size) -> if index >= Global.folded_size then merge_size := !merge_size + size) arr;
-        new_arr.(Global.folded_size) <- (Some "__*__", !merge_size);
-        new_arr in
-
-    let (folded_arr_1, folded_arr_2, folded_clusters) =
-    match (filter_1, filter_2) with
-    | (None, None) -> (arr_1, arr_2, full_clusters)
-    | (Some f1, Some f2) -> 
-        (
-          reduce_arr arr_1, 
-          reduce_arr arr_2, 
-          Clustered.merge_keys (Some "__*__") Session.append_cluster Session.empty_cluster [f1; f2] full_clusters
-        )
-    | (Some f1, None) -> 
-        (
-          reduce_arr arr_1, 
-          arr_2, 
-          Clustered.merge_keys (Some "__*__") Session.append_cluster Session.empty_cluster [f1; (fun _ -> true)] full_clusters
-        )
-    | (None, Some f2) -> 
-        (
-          arr_1, 
-          reduce_arr arr_2, 
-          Clustered.merge_keys (Some "__*__") Session.append_cluster Session.empty_cluster [(fun _ -> true); f2] full_clusters
-        ) in
+    let folded_arr_1 = reduce_arr arr_1
+    and folded_arr_2 = reduce_arr arr_2
+    and folded_clusters = 
+      Clustered.merge_keys 
+        (Some "__*__")
+        Session.append_cluster
+        Session.empty_cluster 
+        [filter arr_1; filter arr_2] 
+        full_clusters in
 
   (
     ("cluster_grid",
@@ -151,8 +140,8 @@ let count param =
     |> get_clust_item_list
     |> (List.map (Request.parse_cluster_item ~config request)) in
 
-  let clusters = Corpus.search ~config 0 (fun _ _ _ x -> x+1) request clust_item_list corpus in
-  let sizes = Clustered.sizes (fun x -> x) clusters in
+  let full_clusters = Corpus.search ~config 0 (fun _ _ _ x -> x+1) request clust_item_list corpus in
+  let sizes = Clustered.sizes (fun x -> x) full_clusters in
 
   let partial_json =
     match sizes with
@@ -166,21 +155,34 @@ let count param =
       let arr_2 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size2 []) in
       Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_1; (* build an array in reverse size order *)
       Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
+
+      let folded_arr_1 = reduce_arr arr_1
+      and folded_arr_2 = reduce_arr arr_2
+      and folded_clusters = 
+        Clustered.merge_keys 
+          (Some "__*__")
+          (+)
+          0 
+          [filter arr_1; filter arr_2] 
+          full_clusters in
+
       ("cluster_grid",
       `Assoc [
-        ("rows", json_values_sizes arr_1); 
-        ("columns", json_values_sizes arr_2);
-        ("cells", `List (
+        ("rows", json_values_sizes folded_arr_1); 
+        ("columns", json_values_sizes folded_arr_2);
+        ("total_rows_nb", `Int (Array.length arr_1));
+        ("total_columns_nb", `Int (Array.length arr_2));
+          ("cells", `List (
           Array.fold_right
             (fun (k1,_) acc_1 -> 
               `List (
                 Array.fold_right
                   (fun (k2,_) acc_2 ->
-                    let cluster = Clustered.get_opt 0 [k1; k2] clusters in
+                    let cluster = Clustered.get_opt 0 [k1; k2] folded_clusters in
                     (`Int cluster) :: acc_2
-                ) arr_2 []
+                ) folded_arr_2 []
               ) :: acc_1
-            ) arr_1 []
+            ) folded_arr_1 []
           )
         )
       ]
@@ -188,7 +190,7 @@ let count param =
 
     | _ -> failwith "Dim > 2 not handled" in
 
-  let nb_solutions = Clustered.cardinal (fun x -> x) clusters in
+  let nb_solutions = Clustered.cardinal (fun x -> x) full_clusters in
   let time = Unix.gettimeofday () -. start_time in 
 
   ["nb_solutions", `Int nb_solutions; "time", `Float time; partial_json]
