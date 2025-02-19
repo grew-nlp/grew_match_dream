@@ -227,34 +227,34 @@ let concat_filenames = function
  | [] -> failwith "empty list in concat_filenames"
  | h::t -> List.fold_left Filename.concat h t 
 
-  module Draw_config = struct
-    type draw_config = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}
-    let current = ref { lemma=false; upos=false; xpos=false; features=false; tf_wf=false; context=false; pid=true; } 
-  
-  
-    let update param = current :=
-    {
-      lemma = (match get_bool_attr_opt "lemma" param with Some v -> v | None -> !current.lemma);
-      upos = (match get_bool_attr_opt "upos" param with Some v -> v | None -> !current.upos);
-      xpos = (match get_bool_attr_opt "xpos" param with Some v -> v | None -> !current.xpos);
-      features = (match get_bool_attr_opt "features" param with Some v -> v | None -> !current.features);
-      tf_wf = (match get_bool_attr_opt "tf_wf" param with Some v -> v | None -> !current.tf_wf);
-      context = (match get_bool_attr_opt "context" param with Some v -> v | None -> !current.context);
-      pid = (match get_bool_attr_opt "pid" param with Some v -> v | None -> !current.pid);
-    }
-  
-    let filter = function
-      | "phon" | "form" -> true
-      | "lemma" -> !current.lemma
-      | "upos" | "cat" -> !current.upos
-      | "xpos" | "pos" -> !current.xpos
-      | "textform" | "wordform" -> !current.tf_wf
-      | "SpaceAfter" -> false
-      | "AlignBegin" | "AlignEnd" -> false
-      | "_speaker" | "_start" | "_stop" -> false 
-      | _ -> !current.features
-  end
-  
+module Draw_config = struct
+  type draw_config = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}
+  let current = ref { lemma=false; upos=false; xpos=false; features=false; tf_wf=false; context=false; pid=true; } 
+
+
+  let update param = current :=
+  {
+    lemma = (match get_bool_attr_opt "lemma" param with Some v -> v | None -> !current.lemma);
+    upos = (match get_bool_attr_opt "upos" param with Some v -> v | None -> !current.upos);
+    xpos = (match get_bool_attr_opt "xpos" param with Some v -> v | None -> !current.xpos);
+    features = (match get_bool_attr_opt "features" param with Some v -> v | None -> !current.features);
+    tf_wf = (match get_bool_attr_opt "tf_wf" param with Some v -> v | None -> !current.tf_wf);
+    context = (match get_bool_attr_opt "context" param with Some v -> v | None -> !current.context);
+    pid = (match get_bool_attr_opt "pid" param with Some v -> v | None -> !current.pid);
+  }
+
+  let filter = function
+    | "phon" | "form" -> true
+    | "lemma" -> !current.lemma
+    | "upos" | "cat" -> !current.upos
+    | "xpos" | "pos" -> !current.xpos
+    | "textform" | "wordform" -> !current.tf_wf
+    | "SpaceAfter" -> false
+    | "AlignBegin" | "AlignEnd" -> false
+    | "_speaker" | "_start" | "_stop" -> false 
+    | _ -> !current.features
+end
+
 
 
 

@@ -24,6 +24,7 @@ module Session = struct
 
   let empty_cluster = { data=[||]; next=0}
 
+  let cluster_size { data; _} = Array.length data
 
   let append_cluster c1 c2 = 
     if c1.next <> 0 || c2.next <> 0

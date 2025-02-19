@@ -25,17 +25,15 @@ let filter arr =
   then (fun x -> Array_.find arr (fun (e,_) -> e=x) < Global.folded_size)
   else (fun _ -> true)
 
-
 (* ============================================================================================================================ *)
 let search param =
   let start_time = Unix.gettimeofday () in
-
-  let display = get_attr "display" param in
-
-  let _ = Draw_config.update display in
-
   let uuid = php_uniqid () in
   let _ = Unix.mkdir (datadir uuid) 0o755 in
+
+  let display = get_attr "display" param in
+  let _ = Draw_config.update display in
+  let ordering = get_string_attr_opt "order" display in
 
   let corpus_id = get_string_attr "corpus_id" param in
   let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
@@ -49,13 +47,13 @@ let search param =
 
   let (clusters_list, status, ratio) =
     Corpus.bounded_search
-      ~config ~ordering:(get_string_attr_opt "order" display) (Some Global.max_results) (Some Global.timeout_search) []
+      ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
       (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
         {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
         request clust_item_list corpus in
 
   let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0}) clusters_list in
-  let sizes = Clustered.sizes (fun x -> Array.length x.Session.data) full_clusters in
+  let sizes = Clustered.sizes Session.cluster_size full_clusters in
   
   let (json_clusters, clusters) = 
     match sizes with 
@@ -80,30 +78,30 @@ let search param =
         [filter arr_1; filter arr_2] 
         full_clusters in
 
-  (
-    ("cluster_grid",
-    `Assoc [
-      ("rows", json_values_sizes folded_arr_1); 
-      ("columns", json_values_sizes folded_arr_2);
-      ("total_rows_nb", `Int (Array.length arr_1));
-      ("total_columns_nb", `Int (Array.length arr_2));
-      ("cells", `List (
-        Array.fold_right
-          (fun (k1,_) acc_1 -> 
-            `List (
-              Array.fold_right
-                (fun (k2,_) acc_2 ->
-                  let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
-                  (`Int (Array.length cluster.Session.data)) :: acc_2
-              ) folded_arr_2 []
-            ) :: acc_1
-          ) folded_arr_1 []
+    (
+      ("cluster_grid",
+      `Assoc [
+        ("rows", json_values_sizes folded_arr_1); 
+        ("columns", json_values_sizes folded_arr_2);
+        ("total_rows_nb", `Int (Array.length arr_1));
+        ("total_columns_nb", `Int (Array.length arr_2));
+        ("cells", `List (
+          Array.fold_right
+            (fun (k1,_) acc_1 -> 
+              `List (
+                Array.fold_right
+                  (fun (k2,_) acc_2 ->
+                    let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
+                    (`Int (Array.length cluster.Session.data)) :: acc_2
+                ) folded_arr_2 []
+              ) :: acc_1
+            ) folded_arr_1 []
+          )
         )
-      )
-    ]
-    ), 
-    folded_clusters
-  )
+      ]
+      ), 
+      folded_clusters
+    )
   | _ -> failwith "Dim > 2 not handled" in
 
   let session = {
@@ -118,7 +116,7 @@ let search param =
       ("uuid", `String uuid);
       ("status", `String status);
       ("ratio", `Float ratio);
-      ("nb_solutions", `Int (Clustered.cardinal (fun x -> Array.length x.Session.data) clusters));
+      ("nb_solutions", `Int (Clustered.cardinal Session.cluster_size clusters));
       ("pivots", Request.json_bound_names request |> Yojson.Basic.Util.to_assoc |> List.assoc "nodes");
       ("time", `Float (Unix.gettimeofday () -. start_time));
       json_clusters
