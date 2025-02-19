@@ -52,7 +52,7 @@ let search param =
         {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
         request clust_item_list corpus in
 
-  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
+  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request}) clusters_list in
   let sizes = Clustered.sizes Session.cluster_size full_clusters in
   
   let (json_clusters, clusters) = 
@@ -116,6 +116,68 @@ let search param =
       ("ratio", `Float ratio);
       ("nb_solutions", `Int (Clustered.cardinal Session.cluster_size clusters));
       ("pivots", Request.json_bound_names request |> Yojson.Basic.Util.to_assoc |> List.assoc "nodes");
+      ("time", `Float (Unix.gettimeofday () -. start_time));
+      json_clusters
+    ] in
+  json_output
+
+(* ============================================================================================================================ *)
+let search_multi param =
+  let start_time = Unix.gettimeofday () in
+  let uuid = php_uniqid () in
+  let _ = Unix.mkdir (datadir uuid) 0o755 in
+
+  let display = get_attr "display" param in
+  let _ = Draw_config.update display in
+  let ordering = get_string_attr_opt "order" display in
+
+  let corpus_id_list = get_attr "corpus_id_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
+
+  let result_list = List.map
+    (fun corpus_id ->
+      let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
+      let config = Corpus_desc.get_config corpus_desc in
+      (* request is reparsed for each corpus: the config mauy be different *)
+      let request = Request.parse ~config (get_string_attr "request" param) in
+      let clust_item_list = [] in (* TODO handle clustering *)
+      let (clusters_list, status, ratio) =
+      Corpus.bounded_search
+        ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
+        (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
+          {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
+          request clust_item_list corpus in
+      let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
+      (corpus_id, full_clusters, status, ratio)
+    ) corpus_id_list in
+  let nb_partial = ref 0 in
+  let top_clusters = Clustered.build_layer
+    (fun (_, full_clusters, _, _) -> full_clusters)
+    (fun (corpus_id, _, status, ratio) -> 
+      match status with
+      | "complete" -> Some (sprintf "%s" corpus_id)
+      | "timeout" -> incr nb_partial; Some (sprintf "%.2f%% of %s (TimeOut)" (100. *. ratio) corpus_id) 
+      | "max_results" -> incr nb_partial; Some (sprintf "%.2f%% of %s (Max)" (100. *. ratio) corpus_id) 
+      | _ -> assert false
+    ) Session.empty_cluster result_list in
+    
+  let (json_clusters, clusters) = match Clustered.sizes Session.cluster_size top_clusters with
+    | [one_layer] ->
+      let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) one_layer []) in
+      cluster_sort arr;
+      (("cluster_array", json_values_sizes arr), top_clusters)
+    | _ -> failwith "TODO: Dim not handled" in
+
+  let session = {
+    Session.last=Unix.gettimeofday ();
+    clusters;
+  } in
+  Client_map.t := String_map.add uuid session !Client_map.t;
+  
+  Printf.printf "nb_partial = %d\n%!" !nb_partial;
+  let json_output = `Assoc [
+      ("uuid", `String uuid);
+      ("nb_solutions", `Int (Clustered.cardinal Session.cluster_size top_clusters));
+      ("nb_partial", `Int !nb_partial);
       ("time", `Float (Unix.gettimeofday () -. start_time));
       json_clusters
     ] in
