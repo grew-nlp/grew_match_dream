@@ -52,7 +52,7 @@ let search param =
         {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
         request clust_item_list corpus in
 
-  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0}) clusters_list in
+  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
   let sizes = Clustered.sizes Session.cluster_size full_clusters in
   
   let (json_clusters, clusters) = 
@@ -105,9 +105,7 @@ let search param =
   | _ -> failwith "Dim > 2 not handled" in
 
   let session = {
-    Session.corpus_id;
-    request;
-    last=Unix.gettimeofday ();
+    Session.last=Unix.gettimeofday ();
     clusters;
   } in
   Client_map.t := String_map.add uuid session !Client_map.t;
@@ -202,11 +200,11 @@ let more_results param =
     let uuid = get_string_attr "uuid" param in
     let cluster_path = get_named_path_attr "named_cluster_path" param in
     let session = String_map.find uuid !Client_map.t in
-    let (_,corpus,corpus_desc) = Table.get_corpus session.corpus_id in
+    let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
+    let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
     let config = Corpus_desc.get_config corpus_desc in
     let audio = Corpus_desc.get_flag "audio" corpus_desc in
     let rtl = Corpus_desc.get_flag "rtl" corpus_desc in
-    let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
     let start_index = cluster.next in
     let max_index = Array.length (cluster.data) in
     let stop_index = min (start_index + Global.nbre_sol_page) max_index in
@@ -226,7 +224,10 @@ let more_results param =
       List.map
         (fun current_index ->
           let occ = cluster.data.(current_index) in
-          let deco = Matching.build_deco session.request occ.matching in
+          let deco = 
+            match cluster.Session.request with
+            | Some request -> Matching.build_deco request occ.matching 
+            | None -> stop "No request in cluster" in
           let index = occ.graph_index in
           let graph = Corpus.get_graph index corpus in
           let filename = sprintf "%d_%d" occ.graph_index occ.pos_in_graph in
@@ -294,8 +295,8 @@ let more_results param =
 
     Client_map.t :=
       String_map.add uuid
-        { session with 
-          last=Unix.gettimeofday ();
+        {  
+          Session.last=Unix.gettimeofday ();
           clusters = Clustered.update (fun _ -> { cluster with next=stop_index}) cluster_path Session.empty_cluster session.clusters ;
         }
         !Client_map.t;
@@ -308,7 +309,6 @@ let export param =
     let uuid = get_string_attr "uuid" param in
     let pivot = get_string_attr "pivot" param in
     let session = String_map.find uuid !Client_map.t in
-    let (_,corpus,_) = Table.get_corpus session.corpus_id in
     let filename = Filename.concat (datadir uuid) "export.tsv" in
     let out_ch = open_out filename in
     begin
@@ -319,12 +319,17 @@ let export param =
 
     let export_cluster cluster =
       Array.iter (fun {Session.graph_index; sent_id; matching; _} ->
+        let (_,corpus,_) = Table.get_corpus cluster.Session.corpus_id in
+
           let graph = Corpus.get_graph graph_index corpus in
           let sentence =
             match pivot with
             | "" -> Graph.to_sentence graph
             | pivot ->
-              let deco = Matching.build_deco session.request matching in
+              let deco = 
+                match cluster.Session.request with
+                | Some request -> Matching.build_deco request matching 
+                | None -> stop "No request in cluster" in    
               Graph.to_sentence ~pivot ~deco graph
               |> (Str.global_replace (Str.regexp_string "<span class=\"highlight\">") "\t")
               |> (Str.global_replace (Str.regexp_string "</span>") "\t") in
@@ -340,12 +345,25 @@ let export param =
     `Null
   with Not_found -> raise (Error (`Assoc [("message", `String "export service: not connected")]))
 
+
+
+let pick_in_clustured clustered =
+  let exception Found of Session.cluster in
+  try  Clustered.fold (fun _ cluster _ -> raise (Found cluster)) clustered (); None
+  with Found c -> Some c
+
 (* ============================================================================================================================ *)
 let conll_export param =
   try
     let uuid = get_string_attr "uuid" param in
     let session = String_map.find uuid !Client_map.t in
-    let (_,corpus,corpus_desc) = Table.get_corpus session.corpus_id in
+
+    let one_cluster =
+      match pick_in_clustured session.clusters with
+      | None -> failwith "Empty data, nothing to export"
+      | Some c -> c in
+
+    let (_,corpus,corpus_desc) = Table.get_corpus one_cluster.corpus_id in
     let config = Corpus_desc.get_config corpus_desc in
     let columns = Corpus.get_columns_opt corpus in
 
@@ -400,9 +418,9 @@ let conll param =
       let current_view = get_int_attr "current_view" param in
       let cluster_path = get_named_path_attr "named_cluster_path" param in
       let session = String_map.find uuid !Client_map.t in
-      let (_,corpus,corpus_desc) = Table.get_corpus session.corpus_id in
-      let config = Corpus_desc.get_config corpus_desc in
       let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
+      let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
+      let config = Corpus_desc.get_config corpus_desc in
       let occ = cluster.Session.data.(current_view) in
       let columns = Corpus.get_columns_opt corpus in
       let gr = Corpus.get_graph occ.Session.graph_index corpus in

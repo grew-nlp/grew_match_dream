@@ -18,23 +18,23 @@ module Session = struct
   }
 
   type cluster = {
+    corpus_id: string;
+    request: Request.t option;
     data: occurrence array;
     next: int;               (* position of the next solution to produce *)
   }
 
-  let empty_cluster = { data=[||]; next=0}
+  let empty_cluster = { data=[||]; next=0; corpus_id = ""; request = None}
 
   let cluster_size { data; _} = Array.length data
 
   let append_cluster c1 c2 = 
     if c1.next <> 0 || c2.next <> 0
     then failwith "Cannot merge clusters when next is not 0"
-    else { data = Array.append c1.data c2.data; next = 0 }
+    else { c1 with data = Array.append c1.data c2.data }
 
   type t = {
-    corpus_id: string;
     last: float;              (* Unix.gettimeofday of the last interaction time *)
-    request: Request.t;
     clusters: cluster Clustered.t;
   }
 end
