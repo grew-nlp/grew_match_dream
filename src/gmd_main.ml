@@ -139,7 +139,10 @@ let search_multi param =
       let config = Corpus_desc.get_config corpus_desc in
       (* request is reparsed for each corpus: the config mauy be different *)
       let request = Request.parse ~config (get_string_attr "request" param) in
-      let clust_item_list = [] in (* TODO handle clustering *)
+      let clust_item_list =
+        get_attr "clust" param
+        |> get_clust_item_list
+        |> (List.map (Request.parse_cluster_item ~config request)) in
       let (clusters_list, status, ratio) =
       Corpus.bounded_search
         ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
@@ -165,7 +168,47 @@ let search_multi param =
       let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) one_layer []) in
       cluster_sort arr;
       (("cluster_array", json_values_sizes arr), top_clusters)
-    | _ -> failwith "TODO: Dim not handled" in
+    | [lang_layer; clust_layer] ->
+      let arr_lang = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) lang_layer []) in
+      let arr_2 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) clust_layer []) in
+      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_lang; (* build an array in reverse size order *)
+      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
+  
+      let folded_arr_2 = reduce_arr arr_2
+      and folded_clusters = 
+        Clustered.merge_keys 
+          (Some "__*__")
+          Session.append_cluster
+          Session.empty_cluster 
+          [(fun _ -> true); filter arr_2] 
+          top_clusters in
+  
+      (
+        ("cluster_grid",
+        `Assoc [
+          ("rows", json_values_sizes arr_lang); 
+          ("columns", json_values_sizes folded_arr_2);
+          ("total_rows_nb", `Int (Array.length arr_lang));
+          ("total_columns_nb", `Int (Array.length arr_2));
+          ("cells", `List (
+            Array.fold_right
+              (fun (k1,_) acc_1 -> 
+                `List (
+                  Array.fold_right
+                    (fun (k2,_) acc_2 ->
+                      let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
+                      (`Int (Array.length cluster.Session.data)) :: acc_2
+                  ) folded_arr_2 []
+                ) :: acc_1
+              ) arr_lang []
+            )
+          )
+        ]
+        ), 
+        folded_clusters
+      )
+
+      | _ -> failwith "Dim > 1 not handled" in
 
   let session = {
     Session.last=Unix.gettimeofday ();
