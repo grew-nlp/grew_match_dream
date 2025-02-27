@@ -97,6 +97,7 @@ let all_routes =
       ("get_corpora_desc", get_corpora_desc, false);
       ("conll", conll, true);
       ("count", count, true);
+      ("count_multi", count_multi, true);
       ("save", save, true);
       ("export", export, true);
       ("conll_export", conll_export, true);

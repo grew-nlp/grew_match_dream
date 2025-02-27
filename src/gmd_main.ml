@@ -10,6 +10,7 @@ open Gmd_utils
 open Gmd_types
 
 
+(* ============================================================================================================================ *)
 let reduce_arr arr = 
   if Array.length arr <= Global.max_grid_size
   then arr
@@ -20,10 +21,87 @@ let reduce_arr arr =
     new_arr.(Global.folded_size) <- (Some "__*__", !merge_size);
     new_arr
 
+(* ============================================================================================================================ *)
 let filter arr =
   if Array.length arr > Global.max_grid_size
   then (fun x -> Array_.find arr (fun (e,_) -> e=x) < Global.folded_size)
   else (fun _ -> true)
+
+(* ============================================================================================================================ *)
+(* Cluster are sorted by Name  *)
+type sorting = No | Size | Name 
+let array_of_layer sorting (layer_size : int String_opt_map.t) =
+  let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) layer_size []) in
+  begin
+    match sorting with
+    | No -> ()
+    | Size -> Array.sort (fun (_,s1) (_,s2) -> Stdlib.compare s2 s1) arr
+    | Name -> cluster_sort arr
+  end;
+  arr
+
+(* ============================================================================================================================ *)
+(* shared code for dim 2 results (mon corpus with 2 clusterings or multi corpus with 1 clustering *)
+let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
+  let arr_1 = array_of_layer Size layer1 in
+  let arr_2 = array_of_layer Size layer2 in
+
+  let folded_arr_1 = if flag_fold1 then reduce_arr arr_1 else arr_1
+  and folded_arr_2 = reduce_arr arr_2
+  and folded_clusters = 
+    Clustered.merge_keys 
+      (Some "__*__")
+      Session.append_cluster
+      Session.empty_cluster 
+      [
+        if flag_fold1 then filter arr_1 else (fun _ -> true);
+        filter arr_2
+      ] 
+      top_clusters in
+
+  (
+    ("cluster_grid",
+    `Assoc [
+      ("rows", json_values_sizes folded_arr_1); 
+      ("columns", json_values_sizes folded_arr_2);
+      ("total_rows_nb", `Int (Array.length arr_1));
+      ("total_columns_nb", `Int (Array.length arr_2));
+      ("cells", `List (
+        Array.fold_right
+          (fun (k1,_) acc_1 -> 
+            `List (
+              Array.fold_right
+                (fun (k2,_) acc_2 ->
+                  let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
+                  (`Int (Array.length cluster.Session.data)) :: acc_2
+              ) folded_arr_2 []
+            ) :: acc_1
+          ) folded_arr_1 []
+        )
+      )
+    ]
+    ), 
+    folded_clusters
+  )
+
+(* ============================================================================================================================ *)
+let search_in_corpus_id param ordering corpus_id =
+  let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
+  let config = Corpus_desc.get_config corpus_desc in
+  (* request is reparsed for each corpus: the config mauy be different *)
+  let request = Request.parse ~config (get_string_attr "request" param) in
+  let clust_item_list =
+    get_attr "clust" param
+    |> get_clust_item_list
+    |> (List.map (Request.parse_cluster_item ~config request)) in
+  let (clusters_list, status, ratio) =
+  Corpus.bounded_search
+    ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
+    (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
+      {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
+      request clust_item_list corpus in
+  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
+  (request, full_clusters, status, ratio)
 
 (* ============================================================================================================================ *)
 let search param =
@@ -35,80 +113,21 @@ let search param =
   let _ = Draw_config.update display in
   let ordering = get_string_attr_opt "order" display in
 
-  let corpus_id = get_string_attr "corpus_id" param in
-  let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
-  let config = Corpus_desc.get_config corpus_desc in
-  let request = Request.parse ~config (get_string_attr "request" param) in
+  let corpus_id = get_string_attr "corpus" param in
 
-  let clust_item_list =
-    get_attr "clust" param
-    |> get_clust_item_list
-    |> (List.map (Request.parse_cluster_item ~config request)) in
-
-  let (clusters_list, status, ratio) =
-    Corpus.bounded_search
-      ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
-      (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
-        {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
-        request clust_item_list corpus in
-
-  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request}) clusters_list in
-  let sizes = Clustered.sizes Session.cluster_size full_clusters in
+  let (request, full_clusters, status, ratio) = search_in_corpus_id param ordering corpus_id in
   
   let (json_clusters, clusters) = 
-    match sizes with 
-  | [] -> (("cluster_single", `Null), full_clusters)
-  | [som_size] ->
-    let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size []) in
-    cluster_sort arr;
-    (("cluster_array", json_values_sizes arr), full_clusters)
-  | [som_size1; som_size2] ->
-    let arr_1 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size1 []) in
-    let arr_2 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size2 []) in
-    Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_1; (* build an array in reverse size order *)
-    Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
+    match Clustered.sizes Session.cluster_size full_clusters with 
+    | [] -> (("cluster_single", `Null), full_clusters)
+    | [som_size] ->
+      let arr = array_of_layer Name som_size in
+      (("cluster_array", json_values_sizes arr), full_clusters)
+    | [som_size1; som_size2] ->
+      search_cluster_grid true som_size1 som_size2 full_clusters
+    | _ -> failwith "Dim > 2 not handled" in
 
-    let folded_arr_1 = reduce_arr arr_1
-    and folded_arr_2 = reduce_arr arr_2
-    and folded_clusters = 
-      Clustered.merge_keys 
-        (Some "__*__")
-        Session.append_cluster
-        Session.empty_cluster 
-        [filter arr_1; filter arr_2] 
-        full_clusters in
-
-    (
-      ("cluster_grid",
-      `Assoc [
-        ("rows", json_values_sizes folded_arr_1); 
-        ("columns", json_values_sizes folded_arr_2);
-        ("total_rows_nb", `Int (Array.length arr_1));
-        ("total_columns_nb", `Int (Array.length arr_2));
-        ("cells", `List (
-          Array.fold_right
-            (fun (k1,_) acc_1 -> 
-              `List (
-                Array.fold_right
-                  (fun (k2,_) acc_2 ->
-                    let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
-                    (`Int (Array.length cluster.Session.data)) :: acc_2
-                ) folded_arr_2 []
-              ) :: acc_1
-            ) folded_arr_1 []
-          )
-        )
-      ]
-      ), 
-      folded_clusters
-    )
-  | _ -> failwith "Dim > 2 not handled" in
-
-  let session = {
-    Session.last=Unix.gettimeofday ();
-    clusters;
-  } in
-  Client_map.t := String_map.add uuid session !Client_map.t;
+  Client_map.t := String_map.add uuid { Session.last = Unix.gettimeofday (); clusters }  !Client_map.t;
   
   let json_output = `Assoc [
       ("uuid", `String uuid);
@@ -131,92 +150,36 @@ let search_multi param =
   let _ = Draw_config.update display in
   let ordering = get_string_attr_opt "order" display in
 
-  let corpus_id_list = get_attr "corpus_id_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
+  let corpus_id_list = get_attr "corpus_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
 
-  let result_list = List.map
-    (fun corpus_id ->
-      let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
-      let config = Corpus_desc.get_config corpus_desc in
-      (* request is reparsed for each corpus: the config mauy be different *)
-      let request = Request.parse ~config (get_string_attr "request" param) in
-      let clust_item_list =
-        get_attr "clust" param
-        |> get_clust_item_list
-        |> (List.map (Request.parse_cluster_item ~config request)) in
-      let (clusters_list, status, ratio) =
-      Corpus.bounded_search
-        ~config ~ordering (Some Global.max_results) (Some Global.timeout_search) []
-        (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
-          {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
-          request clust_item_list corpus in
-      let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
-      (corpus_id, full_clusters, status, ratio)
-    ) corpus_id_list in
+  let result_list = 
+    List.map
+      (fun corpus_id -> 
+        (corpus_id, search_in_corpus_id param ordering corpus_id)
+      ) corpus_id_list in
+
   let nb_partial = ref 0 in
   let top_clusters = Clustered.build_layer
-    (fun (_, full_clusters, _, _) -> full_clusters)
-    (fun (corpus_id, _, status, ratio) -> 
+    (fun (_, (_, full_clusters, _, _)) -> full_clusters)
+    (fun (corpus_id, (_, _, status, ratio)) -> 
       match status with
-      | "complete" -> Some (sprintf "%s" corpus_id)
+      | "complete" -> Some corpus_id
       | "timeout" -> incr nb_partial; Some (sprintf "%.2f%% of %s (TimeOut)" (100. *. ratio) corpus_id) 
       | "max_results" -> incr nb_partial; Some (sprintf "%.2f%% of %s (Max)" (100. *. ratio) corpus_id) 
       | _ -> assert false
-    ) Session.empty_cluster result_list in
+    ) result_list in
     
-  let (json_clusters, clusters) = match Clustered.sizes Session.cluster_size top_clusters with
+  let (json_clusters, clusters) =
+    match Clustered.sizes Session.cluster_size top_clusters with
     | [one_layer] ->
-      let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) one_layer []) in
-      cluster_sort arr;
+      let arr = array_of_layer Name one_layer in
       (("cluster_array", json_values_sizes arr), top_clusters)
     | [lang_layer; clust_layer] ->
-      let arr_lang = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) lang_layer []) in
-      let arr_2 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) clust_layer []) in
-      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_lang; (* build an array in reverse size order *)
-      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
-  
-      let folded_arr_2 = reduce_arr arr_2
-      and folded_clusters = 
-        Clustered.merge_keys 
-          (Some "__*__")
-          Session.append_cluster
-          Session.empty_cluster 
-          [(fun _ -> true); filter arr_2] 
-          top_clusters in
-  
-      (
-        ("cluster_grid",
-        `Assoc [
-          ("rows", json_values_sizes arr_lang); 
-          ("columns", json_values_sizes folded_arr_2);
-          ("total_rows_nb", `Int (Array.length arr_lang));
-          ("total_columns_nb", `Int (Array.length arr_2));
-          ("cells", `List (
-            Array.fold_right
-              (fun (k1,_) acc_1 -> 
-                `List (
-                  Array.fold_right
-                    (fun (k2,_) acc_2 ->
-                      let cluster = Clustered.get_opt Session.empty_cluster [k1; k2] folded_clusters in
-                      (`Int (Array.length cluster.Session.data)) :: acc_2
-                  ) folded_arr_2 []
-                ) :: acc_1
-              ) arr_lang []
-            )
-          )
-        ]
-        ), 
-        folded_clusters
-      )
+      search_cluster_grid false lang_layer clust_layer top_clusters
+    | _ -> failwith "Dim > 1 not handled" in
 
-      | _ -> failwith "Dim > 1 not handled" in
-
-  let session = {
-    Session.last=Unix.gettimeofday ();
-    clusters;
-  } in
-  Client_map.t := String_map.add uuid session !Client_map.t;
+  Client_map.t := String_map.add uuid { Session.last = Unix.gettimeofday (); clusters }  !Client_map.t;
   
-  Printf.printf "nb_partial = %d\n%!" !nb_partial;
   let json_output = `Assoc [
       ("uuid", `String uuid);
       ("nb_solutions", `Int (Clustered.cardinal Session.cluster_size top_clusters));
@@ -226,76 +189,115 @@ let search_multi param =
     ] in
   json_output
 
-(* ============================================================================================================================ *)
-let count param =
-  let start_time = Unix.gettimeofday () in
 
-  let corpus_id = get_string_attr "corpus_id" param in
+
+  (* ============================================================================================================================ *)
+  let count_cluster_grid flag_fold1 layer1 layer2 top_clusters =
+    let arr_1 = array_of_layer Size layer1 in
+    let arr_2 = array_of_layer Size layer2 in
+
+    let folded_arr_1 = if flag_fold1 then reduce_arr arr_1 else arr_1
+    and folded_arr_2 = reduce_arr arr_2
+    and folded_clusters = 
+      Clustered.merge_keys 
+        (Some "__*__")
+        (+)
+        0 
+        [
+          if flag_fold1 then filter arr_1 else (fun _ -> true);
+          filter arr_2
+        ] 
+        top_clusters in
+
+    ("cluster_grid",
+    `Assoc [
+      ("rows", json_values_sizes folded_arr_1); 
+      ("columns", json_values_sizes folded_arr_2);
+      ("total_rows_nb", `Int (Array.length arr_1));
+      ("total_columns_nb", `Int (Array.length arr_2));
+        ("cells", `List (
+        Array.fold_right
+          (fun (k1,_) acc_1 -> 
+            `List (
+              Array.fold_right
+                (fun (k2,_) acc_2 ->
+                  let cluster = Clustered.get_opt 0 [k1; k2] folded_clusters in
+                  (`Int cluster) :: acc_2
+              ) folded_arr_2 []
+            ) :: acc_1
+          ) folded_arr_1 []
+        )
+      )
+    ]
+    )
+
+(* ============================================================================================================================ *)
+let count_in_corpus_id param corpus_id =
   let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
   let config = Corpus_desc.get_config corpus_desc in
-  let string_request = get_string_attr "request" param in
-  let request = Request.parse ~config string_request in
+  let request = Request.parse ~config (get_string_attr "request" param) in
 
   let clust_item_list =
     get_attr "clust" param
     |> get_clust_item_list
     |> (List.map (Request.parse_cluster_item ~config request)) in
 
-  let full_clusters = Corpus.search ~config 0 (fun _ _ _ x -> x+1) request clust_item_list corpus in
-  let sizes = Clustered.sizes (fun x -> x) full_clusters in
+  Corpus.search ~config 0 (fun _ _ _ x -> x+1) request clust_item_list corpus
+
+(* ============================================================================================================================ *)
+let count param =
+  let start_time = Unix.gettimeofday () in
+
+  let corpus_id = get_string_attr "corpus" param in
+  let full_clusters = count_in_corpus_id param corpus_id in
 
   let partial_json =
-    match sizes with
+    match Clustered.sizes (fun x -> x) full_clusters with
     | [] -> ("cluster_single", `Null)
     | [som_size] ->
-      let arr = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size []) in
-      cluster_sort arr;
+      let arr = array_of_layer Name som_size in
       ("cluster_array", json_values_sizes arr)
     | [som_size1; som_size2] ->
-      let arr_1 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size1 []) in
-      let arr_2 = Array.of_list (String_opt_map.fold (fun k v acc -> (k,v) :: acc) som_size2 []) in
-      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_1; (* build an array in reverse size order *)
-      Array.sort (fun (_,s1) (_,s2) -> compare s2 s1) arr_2; (* build an array in reverse size order *)
-
-      let folded_arr_1 = reduce_arr arr_1
-      and folded_arr_2 = reduce_arr arr_2
-      and folded_clusters = 
-        Clustered.merge_keys 
-          (Some "__*__")
-          (+)
-          0 
-          [filter arr_1; filter arr_2] 
-          full_clusters in
-
-      ("cluster_grid",
-      `Assoc [
-        ("rows", json_values_sizes folded_arr_1); 
-        ("columns", json_values_sizes folded_arr_2);
-        ("total_rows_nb", `Int (Array.length arr_1));
-        ("total_columns_nb", `Int (Array.length arr_2));
-          ("cells", `List (
-          Array.fold_right
-            (fun (k1,_) acc_1 -> 
-              `List (
-                Array.fold_right
-                  (fun (k2,_) acc_2 ->
-                    let cluster = Clustered.get_opt 0 [k1; k2] folded_clusters in
-                    (`Int cluster) :: acc_2
-                ) folded_arr_2 []
-              ) :: acc_1
-            ) folded_arr_1 []
-          )
-        )
-      ]
-      )
-
+      count_cluster_grid true som_size1 som_size2 full_clusters
     | _ -> failwith "Dim > 2 not handled" in
 
   let nb_solutions = Clustered.cardinal (fun x -> x) full_clusters in
   let time = Unix.gettimeofday () -. start_time in 
 
   ["nb_solutions", `Int nb_solutions; "time", `Float time; partial_json]
-  |> (fun l -> if Redundant.record string_request = 0 then ("redundant", `Int Redundant.bound)::l else l)
+  |> (fun l -> if Redundant.record (get_string_attr "request" param) = 0 then ("redundant", `Int Redundant.bound)::l else l)
+  |> (fun l -> `Assoc l)
+
+  (* ============================================================================================================================ *)
+let count_multi param =
+  let start_time = Unix.gettimeofday () in
+  let corpus_id_list = get_attr "corpus_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
+
+  let result_list = 
+    List.map
+      (fun corpus_id -> 
+        (corpus_id, count_in_corpus_id param corpus_id)
+      ) corpus_id_list in
+
+  let top_clusters = Clustered.build_layer
+    (fun (_, full_clusters) -> full_clusters)
+    (fun (corpus_id, _) -> Some corpus_id
+  ) result_list in
+
+  let partial_json =
+    match Clustered.sizes (fun x -> x) top_clusters with
+    | [som_size] ->
+      let arr = array_of_layer Name som_size in
+      ("cluster_array", json_values_sizes arr)
+    | [som_size1; som_size2] ->
+      count_cluster_grid false som_size1 som_size2 top_clusters
+    | _ -> failwith "Dim not handled" in
+
+  let nb_solutions = Clustered.cardinal (fun x -> x) top_clusters in
+  let time = Unix.gettimeofday () -. start_time in 
+
+  ["nb_solutions", `Int nb_solutions; "time", `Float time; partial_json]
+  |> (fun l -> if Redundant.record (get_string_attr "request" param) = 0 then ("redundant", `Int Redundant.bound)::l else l)
   |> (fun l -> `Assoc l)
 
 (* ============================================================================================================================ *)
@@ -518,36 +520,24 @@ let conll_export param =
 (* ============================================================================================================================ *)
 let conll param =
   try
-    match get_string_attr_opt "uuid" param with
-    | Some uuid ->
-      let current_view = get_int_attr "current_view" param in
-      let cluster_path = get_named_path_attr "named_cluster_path" param in
-      let session = String_map.find uuid !Client_map.t in
-      let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
-      let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
-      let config = Corpus_desc.get_config corpus_desc in
-      let occ = cluster.Session.data.(current_view) in
-      let columns = Corpus.get_columns_opt corpus in
-      let gr = Corpus.get_graph occ.Session.graph_index corpus in
-      `String (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
-    | None -> (* get CoNLL before calling grew_web *)
-      let corpus_id = get_string_attr "corpus_id" param in
-      let sent_id = get_string_attr "sent_id" param in
-      let (_,corpus,corpus_desc) = Table.get_corpus corpus_id in
-      let columns = Corpus.get_columns_opt corpus in
-      let config = Corpus_desc.get_config corpus_desc in
-      match Corpus.graph_of_sent_id sent_id corpus with
-      | None -> raise (Error (`Assoc [("message", `String "Unknown sent_id"); ("sent_id", `String sent_id)]))
-      | Some gr ->
-        `String (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
-
+    let uuid = get_string_attr "uuid" param in
+    let current_view = get_int_attr "current_view" param in
+    let cluster_path = get_named_path_attr "named_cluster_path" param in
+    let session = String_map.find uuid !Client_map.t in
+    let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
+    let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
+    let config = Corpus_desc.get_config corpus_desc in
+    let occ = cluster.Session.data.(current_view) in
+    let columns = Corpus.get_columns_opt corpus in
+    let gr = Corpus.get_graph occ.Session.graph_index corpus in
+    `String (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
   with Not_found -> raise (Error (`Assoc [("message", `String "conll service: not connected")]))
 
 (* ============================================================================================================================ *)
 let parallel param = 
   try
     let uuid = get_string_attr "uuid" param in
-    let corpus_id = get_string_attr "corpus_id" param in
+    let corpus_id = get_string_attr "corpus" param in
     let sent_id = get_string_attr "sent_id" param in
 
     let (_,corpus,corpus_desc) = Table.get_corpus corpus_id in
@@ -608,7 +598,7 @@ let get_corpora_desc param =
 
 (* ============================================================================================================================ *)
 let get_build_file param =
-  let corpus_id = get_string_attr "corpus_id" param in
+  let corpus_id = get_string_attr "corpus" param in
   let file = get_string_attr "file" param in
   let (corpus_desc, _) = String_map.find corpus_id !Global.corpora_map in 
   let directory = Corpus_desc.get_directory corpus_desc in
@@ -618,7 +608,7 @@ let get_build_file param =
 
 (* ============================================================================================================================ *)
 let dowload_tgz param =
-  let corpus_id = get_string_attr "corpus_id" param in
+  let corpus_id = get_string_attr "corpus" param in
   let tgz_file = sprintf "%s.tgz" corpus_id in
   let (corpus_desc, _) = String_map.find corpus_id !Global.corpora_map in 
   let directory = Corpus_desc.get_directory corpus_desc in
