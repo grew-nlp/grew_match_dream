@@ -223,9 +223,9 @@ let load_corpusbank corpusbank : (Corpus_desc.t * int) String_map.t =
   with Sys_error _ -> !map
 
 
-let concat_filenames = function 
- | [] -> failwith "empty list in concat_filenames"
- | h::t -> List.fold_left Filename.concat h t 
+let concat_filenames = function
+  | [] -> failwith "empty list in concat_filenames"
+  | h::t -> List.fold_left Filename.concat h t 
 
 module Draw_config = struct
   type draw_config = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}

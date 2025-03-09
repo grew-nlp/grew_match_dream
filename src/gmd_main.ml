@@ -41,7 +41,7 @@ let array_of_layer sorting (layer_size : int String_opt_map.t) =
   arr
 
 (* ============================================================================================================================ *)
-(* shared code for dim 2 results (mon corpus with 2 clusterings or multi corpus with 1 clustering *)
+(* shared code for dim 2 results (mono corpus with 2 clusterings or multi corpus with 1 clustering *)
 let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
   let arr_1 = array_of_layer Size layer1 in
   let arr_2 = array_of_layer Size layer2 in
@@ -215,7 +215,7 @@ let search_multi param =
       ("columns", json_values_sizes folded_arr_2);
       ("total_rows_nb", `Int (Array.length arr_1));
       ("total_columns_nb", `Int (Array.length arr_2));
-        ("cells", `List (
+      ("cells", `List (
         Array.fold_right
           (fun (k1,_) acc_1 -> 
             `List (
@@ -345,27 +345,21 @@ let more_results param =
 
             let ((sentence, audio_bounds, sound_url), sentence_filename) = rich_sentence ~deco index in
 
-            (* let sent_with_context =
-              if !Draw_config.current.context
-              then
-                let prev_sent = try (Corpus.get_text (index-1) corpus)^"</br>" with _ -> "" in
-                let next_sent = try "</br>"^(Corpus.get_text (index+1) corpus) with _ -> "" in
-                sprintf "%s <font color=\"#FC5235\">%s</font> %s" prev_sent sentence next_sent
-              else sprintf "<font color=\"#FC5235\">%s</font>" sentence in *)
-
               let (sent_with_context, extended_audio_bounds) =
               if !Draw_config.current.context
               then
-                let (prev_sent, new_left_bound) = match rich_sentence (index-1) with
-                | (("",_,_),_) -> (None, None)
-                | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
-                | ((prev_text,prev_bounds,_),_) -> (Some prev_text , CCOption.map fst prev_bounds) in
-                let (next_sent, new_right_bound) = match rich_sentence (index+1) with
-                | (("",_,_),_) -> (None, None)
-                | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
-                | ((next_text,next_bounds,_),_) -> (Some next_text , CCOption.map snd next_bounds) in
+                let (prev_sent, new_left_bound) =
+                  match rich_sentence (index-1) with
+                  | (("",_,_),_) -> (None, None)
+                  | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
+                  | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
+                  | ((prev_text,prev_bounds,_),_) -> (Some prev_text, CCOption.map fst prev_bounds) in
+                let (next_sent, new_right_bound) =
+                  match rich_sentence (index+1) with
+                  | (("",_,_),_) -> (None, None)
+                  | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
+                  | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
+                  | ((next_text,next_bounds,_),_) -> (Some next_text, CCOption.map snd next_bounds) in
                 (sprintf "%s<font color=\"#FC5235\">%s</font>%s"
                   (match prev_sent with None -> "" | Some p -> p^"</br>")
                   sentence
@@ -376,7 +370,7 @@ let more_results param =
                 )
               else (sprintf "<font color=\"#FC5235\">%s</font>" sentence, audio_bounds) in
 
-           let meta_list =
+            let meta_list =
               List.filter
                 (function
                 | ("sent_id",_) | ("sound_url",_) | ("code",_) | ("url",_) | ("_filename", _) -> false
@@ -384,20 +378,20 @@ let more_results param =
                 | _ -> true
                 ) (Graph.get_meta_list graph) in
 
-           let json =
-             match Corpus_desc.get_display corpus_desc with
-             | None ->
-               let audio_info =
-                 match (audio, sound_url, extended_audio_bounds) with
-                 | (true, Some url, Some (i,f)) -> Some (sprintf "%s#t=%g,%g" url i f)
-                 | (true, Some url, None) -> Some (sprintf "%s" url)
-                 | _ -> None in
-               save_dep uuid ~config ?audio_info rtl filename list_item deco graph sent_with_context meta_list
-             | Some -1 -> save_dot uuid ~config filename list_item deco graph sent_with_context meta_list
-             | Some i ->
-               let subgraph = Matching.subgraph graph occ.matching i in
-               save_dot uuid ~config filename list_item deco subgraph sent_with_context meta_list in
-           json
+            let json =
+              match Corpus_desc.get_display corpus_desc with
+              | None ->
+                let audio_info =
+                  match (audio, sound_url, extended_audio_bounds) with
+                  | (true, Some url, Some (i,f)) -> Some (sprintf "%s#t=%g,%g" url i f)
+                  | (true, Some url, None) -> Some (sprintf "%s" url)
+                  | _ -> None in
+                save_dep uuid ~config ?audio_info rtl filename list_item deco graph sent_with_context meta_list
+              | Some -1 -> save_dot uuid ~config filename list_item deco graph sent_with_context meta_list
+              | Some i ->
+                let subgraph = Matching.subgraph graph occ.matching i in
+                save_dot uuid ~config filename list_item deco subgraph sent_with_context meta_list in
+            json
         ) (CCList.range' start_index stop_index) in
 
     Client_map.t :=
@@ -425,8 +419,9 @@ let export param =
     end;
 
     let export_cluster cluster =
-      Array.iter (fun {Session.graph_index; sent_id; matching; _} ->
-        let (_,corpus,_) = Table.get_corpus cluster.Session.corpus_id in
+      Array.iter 
+        (fun {Session.graph_index; sent_id; matching; _} ->
+          let (_,corpus,_) = Table.get_corpus cluster.Session.corpus_id in
 
           let graph = Corpus.get_graph graph_index corpus in
           let sentence =
@@ -444,14 +439,13 @@ let export param =
         ) cluster.Session.data in
 
     Clustered.iter
-    (fun _ cluster ->
-      export_cluster cluster
-    ) session.clusters;
+      (fun _ cluster ->
+        export_cluster cluster
+      ) session.clusters;
 
     close_out out_ch;
     `Null
   with Not_found -> raise (Error (`Assoc [("message", `String "export service: not connected")]))
-
 
 
 let pick_in_clustured clustered =
@@ -493,23 +487,22 @@ let conll_export param =
             if occ.Session.sent_id <> !current_sent_id
             then
               begin
-                let gr = Corpus.get_graph occ.Session.graph_index corpus in
-                fprintf out_ch "%s\n" (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config));
+                let graph = Corpus.get_graph occ.Session.graph_index corpus in
+                fprintf out_ch "%s\n" (graph |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config));
                 current_sent_id := occ.Session.sent_id
               end
           ) cluster.Session.data
       | _ -> (* clustered results: collect all graph_indexes *)
         let graph_index_set =
           Clustered.fold
-          (fun _ cluster acc ->
-            Array.fold_left 
-              (fun acc2 occ -> Int_set.add occ.Session.graph_index acc2) 
-              acc cluster.Session.data
-          ) session.clusters Int_set.empty in
+            (fun _ cluster acc ->
+              Array.fold_left
+                (fun acc2 occ -> Int_set.add occ.Session.graph_index acc2
+                ) acc cluster.Session.data
+            ) session.clusters Int_set.empty in
         Int_set.iter
           (fun graph_index ->
-            let gr = Corpus.get_graph graph_index corpus in
-            fprintf out_ch "%s\n"  (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
+            Corpus.get_graph graph_index corpus |> Graph.to_json |> Conll.of_json |> Conll.to_string ?columns ~config |> fprintf out_ch "%s\n"
           ) graph_index_set
     end;
 
@@ -529,8 +522,8 @@ let conll param =
     let config = Corpus_desc.get_config corpus_desc in
     let occ = cluster.Session.data.(current_view) in
     let columns = Corpus.get_columns_opt corpus in
-    let gr = Corpus.get_graph occ.Session.graph_index corpus in
-    `String (gr |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
+    let graph = Corpus.get_graph occ.Session.graph_index corpus in
+    `String (graph |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
   with Not_found -> raise (Error (`Assoc [("message", `String "conll service: not connected")]))
 
 (* ============================================================================================================================ *)
