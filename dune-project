@@ -19,7 +19,11 @@
  (name grew_match_dream)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml dune)
+ (depends 
+   ocaml 
+   dune
+   (grewlib (>= 1.17.0))
+ )
  (tags
   (topics "to describe" your project)))
 
