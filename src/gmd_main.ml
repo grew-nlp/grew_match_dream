@@ -85,7 +85,7 @@ let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
   )
 
 (* ============================================================================================================================ *)
-let search_in_corpus_id param ordering corpus_id =
+let search_in_corpus_id ?(corpus_nb=0) param ordering corpus_id =
   let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
   let config = Corpus_desc.get_config corpus_desc in
   (* request is reparsed for each corpus: the config mauy be different *)
@@ -100,7 +100,10 @@ let search_in_corpus_id param ordering corpus_id =
     (fun graph_index sent_id _ pos_in_graph nb_in_graph matching x -> 
       {Session.graph_index; pos_in_graph; nb_in_graph; sent_id; matching}:: x)
       request clust_item_list corpus in
-  let full_clusters = Clustered.map (fun l -> { Session.data = Array.of_list (List.rev l); next = 0; corpus_id; request = Some request }) clusters_list in
+  let full_clusters =
+    Clustered.map 
+      (fun l -> { Session.corpus_id; corpus_nb; request = Some request; data = Array.of_list (List.rev l); next = 0 }
+      ) clusters_list in
   (request, full_clusters, status, ratio)
 
 (* ============================================================================================================================ *)
@@ -153,9 +156,9 @@ let search_multi param =
   let corpus_id_list = get_attr "corpus_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
 
   let result_list = 
-    List.map
-      (fun corpus_id -> 
-        (corpus_id, search_in_corpus_id param ordering corpus_id)
+    List.mapi
+      (fun corpus_nb corpus_id -> 
+        (corpus_id, search_in_corpus_id ~corpus_nb param ordering corpus_id)
       ) corpus_id_list in
 
   let nb_partial = ref 0 in
@@ -337,7 +340,7 @@ let more_results param =
             | None -> stop "No request in cluster" in
           let index = occ.graph_index in
           let graph = Corpus.get_graph index corpus in
-          let filename = sprintf "%d_%d" occ.graph_index occ.pos_in_graph in
+          let filename = sprintf "%d_%d_%d" cluster.corpus_nb occ.graph_index occ.pos_in_graph in
           let list_item =
             match occ.nb_in_graph with
             | 1 -> occ.sent_id

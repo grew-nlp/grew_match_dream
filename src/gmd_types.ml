@@ -19,12 +19,13 @@ module Session = struct
 
   type cluster = {
     corpus_id: string;
+    corpus_nb: int;
     request: Request.t option;
     data: occurrence array;
     next: int;               (* position of the next solution to produce *)
   }
 
-  let empty_cluster = { data=[||]; next=0; corpus_id = ""; request = None}
+  let empty_cluster = { corpus_id = ""; corpus_nb = 0; request = None; data=[||]; next=0 }
 
   let cluster_size { data; _} = Array.length data
 
