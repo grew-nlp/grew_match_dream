@@ -88,7 +88,7 @@ let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
 let search_in_corpus_id ?(corpus_nb=0) param ordering corpus_id =
   let (_, corpus, corpus_desc) = Table.get_corpus corpus_id in
   let config = Corpus_desc.get_config corpus_desc in
-  (* request is reparsed for each corpus: the config mauy be different *)
+  (* request is reparsed for each corpus: the config may be different *)
   let request = Request.parse ~config (get_string_attr "request" param) in
   let clust_item_list =
     get_attr "clust" param
@@ -167,8 +167,8 @@ let search_multi param =
     (fun (corpus_id, (_, _, status, ratio)) -> 
       match status with
       | "complete" -> Some corpus_id
-      | "timeout" -> incr nb_partial; Some (sprintf "%.2f%% of %s (TimeOut)" (100. *. ratio) corpus_id) 
-      | "max_results" -> incr nb_partial; Some (sprintf "%.2f%% of %s (Max)" (100. *. ratio) corpus_id) 
+      | "timeout" -> incr nb_partial; Some (sprintf "%s (TimeOut at %.2f%%)" corpus_id (100. *. ratio)) 
+      | "max_results" -> incr nb_partial; Some (sprintf "%s (Max reached at %.2f%%)" corpus_id(100. *. ratio))
       | _ -> assert false
     ) result_list in
     
