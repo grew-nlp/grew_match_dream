@@ -408,18 +408,35 @@ let more_results param =
   with Not_found -> raise (Error (`Assoc [("message", `String "more_results service: not connected")]))
 
 (* ============================================================================================================================ *)
-let export param = 
+let tsv_export param = 
   try
     let uuid = get_string_attr "uuid" param in
     let pivot = get_string_attr "pivot" param in
     let session = String_map.find uuid !Client_map.t in
+
+    let corpus_id = get_string_attr "corpus" param in
+
+    let (_,_,corpus_desc) = Table.get_corpus corpus_id in
+    let config = Corpus_desc.get_config corpus_desc in
+    (* request is reparsed for each corpus: the config may be different *)
+    let request = Request.parse ~config (get_string_attr "request" param) in
+
+    let cluster_item_list =
+      get_attr "clust" param
+      |> get_clust_item_list
+      |> (List.map (Request.parse_cluster_item ~config request)) in
+
     let filename = Filename.concat (datadir uuid) "export.tsv" in
     let out_ch = open_out filename in
     begin
       match pivot with
-      | "" -> fprintf out_ch "sent_id\tsentence\n"
-      | _ -> fprintf out_ch "sent_id\tleft_context\tpivot\tright_context\n"
+      | "" -> fprintf out_ch "sent_id\tsentence"
+      | _ -> fprintf out_ch "sent_id\tleft_context\tpivot\tright_context"
     end;
+    List.iter 
+      (fun string_cluster_item -> fprintf out_ch "\t%s" string_cluster_item)
+      (Request.string_list_of_cluster_item_list cluster_item_list);
+    fprintf out_ch "\n";
 
     let export_cluster cluster =
       Array.iter 
@@ -438,7 +455,13 @@ let export param =
               Graph.to_sentence ~pivot ~deco graph
               |> (Str.global_replace (Str.regexp_string "<span class=\"highlight\">") "\t")
               |> (Str.global_replace (Str.regexp_string "</span>") "\t") in
-          fprintf out_ch "%s\t%s\n" sent_id sentence
+          fprintf out_ch "%s\t%s" sent_id sentence;
+          let value_list = 
+            cluster_item_list
+            |> List.map (fun cluster_item -> Matching.get_clust_value_list ~config cluster_item request graph matching)
+            |> List.flatten in
+          List.iter (fun string_cluster_item -> fprintf out_ch "\t%s" string_cluster_item) value_list;
+          fprintf out_ch "\n";
         ) cluster.Session.data in
 
     Clustered.iter

@@ -99,7 +99,7 @@ let all_routes =
       ("count", count, true);
       ("count_multi", count_multi, true);
       ("save", save, true);
-      ("export", export, true);
+      ("tsv_export", tsv_export, true);
       ("conll_export", conll_export, true);
       ("parallel", parallel, true);
       ("dowload_tgz", dowload_tgz, true);
