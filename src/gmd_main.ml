@@ -473,24 +473,14 @@ let tsv_export param =
     `Null
   with Not_found -> raise (Error (`Assoc [("message", `String "export service: not connected")]))
 
-
-let pick_in_clustured clustered =
-  let exception Found of Session.cluster in
-  try  Clustered.fold (fun _ cluster _ -> raise (Found cluster)) clustered (); None
-  with Found c -> Some c
-
 (* ============================================================================================================================ *)
 let conll_export param =
   try
     let uuid = get_string_attr "uuid" param in
+    let corpus_id = get_string_attr "corpus" param in
     let session = String_map.find uuid !Client_map.t in
 
-    let one_cluster =
-      match pick_in_clustured session.clusters with
-      | None -> failwith "Empty data, nothing to export"
-      | Some c -> c in
-
-    let (_,corpus,corpus_desc) = Table.get_corpus one_cluster.corpus_id in
+    let (_,corpus,corpus_desc) = Table.get_corpus corpus_id in
     let config = Corpus_desc.get_config corpus_desc in
     let columns = Corpus.get_columns_opt corpus in
 
@@ -503,34 +493,17 @@ let conll_export param =
       | None -> ()
     end; 
 
-    begin
-      match Clustered.depth session.clusters with 
-      | 0 -> (* No clustering --> keep the sent_id order  *)
-        let cluster = Clustered.get_opt Session.empty_cluster [] session.clusters in
-        let current_sent_id = ref "" in
-        Array.iter
-          (fun occ ->
-            if occ.Session.sent_id <> !current_sent_id
-            then
-              begin
-                let graph = Corpus.get_graph occ.Session.graph_index corpus in
-                fprintf out_ch "%s\n" (graph |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config));
-                current_sent_id := occ.Session.sent_id
-              end
-          ) cluster.Session.data
-      | _ -> (* clustered results: collect all graph_indexes *)
-        let graph_index_set =
-          Clustered.fold
-            (fun _ cluster acc ->
-              Array.fold_left
-                (fun acc2 occ -> Int_set.add occ.Session.graph_index acc2
-                ) acc cluster.Session.data
-            ) session.clusters Int_set.empty in
-        Int_set.iter
-          (fun graph_index ->
-            Corpus.get_graph graph_index corpus |> Graph.to_json |> Conll.of_json |> Conll.to_string ?columns ~config |> fprintf out_ch "%s\n"
-          ) graph_index_set
-    end;
+    let graph_index_set =
+      Clustered.fold
+        (fun _ cluster acc ->
+          Array.fold_left
+            (fun acc2 occ -> Int_set.add occ.Session.graph_index acc2
+            ) acc cluster.Session.data
+        ) session.clusters Int_set.empty in
+    let _ = Int_set.iter
+      (fun graph_index ->
+        Corpus.get_graph graph_index corpus |> Graph.to_json |> Conll.of_json |> Conll.to_string ?columns ~config |> fprintf out_ch "%s\n"
+      ) graph_index_set in
 
     close_out out_ch;
     `Null
