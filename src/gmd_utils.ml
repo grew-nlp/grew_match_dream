@@ -301,29 +301,92 @@ let save_dot uuid ~config base sent_id deco graph sentence meta =
 
 (* Returns a float value corresponding to the left part of an interval like ]-∞, 3] or [1,2] 
    raises Failure if the input string in not an interval *)
+exception Not_interval
 let get_left_interval s =
+  if s = "__*__" (* be sure that merge columns stay at the end *)
+  then Float.infinity
+  else 
   try 
     let _ = Str.search_forward (Str.regexp {|[][]\([^,]*\),|}) s 0 in
         match Str.matched_group 1 s with
         | "-∞" -> Float.neg_infinity
         | s -> float_of_string s 
-  with Not_found -> raise (Failure "not interval")
+  with Not_found -> raise Not_interval
 
 (* sorting of clustering keys: as intervals, as floats, or alphabetically *)
 let cluster_sort arr =
-  (* 1) try to sort all the array as intervals, raise Failure if some elt is not an interval *)
+  (* step 1) try to sort all the array as intervals, raise Not_interval if some elt is not an interval *)
   try Array.sort 
     (fun x y -> match (x,y) with
-        | ((Some k1,_), (Some k2,_)) -> Stdlib.compare (get_left_interval k1) (get_left_interval k2)
-    | _ -> raise (Failure "not all intervals")
+      | ((Some k1,_), (Some k2,_)) -> Stdlib.compare (get_left_interval k1) (get_left_interval k2)
+      | _ -> raise Not_interval (* None is not a valid interval *)
     ) arr
-      (* 2) try to sort all the array as floats, raise Failure if some elt is not a float *)
-  with Failure _ -> 
+  with Not_interval -> 
+
+    (* step 2) try to sort all the array as floats, raise Failure if some elt is not a float *)
     try Array.sort 
       (fun x y -> match (x,y) with
-          | ((Some k1,_), (Some k2,_)) -> Stdlib.compare (float_of_string k1) (float_of_string k2)
-      | _ -> raise (Failure "not all floats")
+        | ((Some k1,_), (Some k2,_)) -> Stdlib.compare (float_of_string k1) (float_of_string k2)
+        | _ -> raise (Failure "not_all_float")
       ) arr
+      with Failure _ -> (* either "not_all_float" or "float_of_string" *)
+
+      (* step 3) sort alphabetically *)
+      Array.sort (fun (k1,_) (k2,_) -> Stdlib.compare k1 k2) arr 
+
+
+(* Given two array containing the same elements without repetition, 
+  [compute_permutation] returns a int array describing the permutation from [array1] to [array2]
+  Example:
+  `compute_permutation [|"A"; "B"; "C"; "D"|] [|"D"; "A"; "C"; "B"|]` returns [|3; 0; 2; 1|]
+*)
+let compute_permutation array1 array2 =
+  let len = Array.length array1 in
+  let index_map = Hashtbl.create len in
+    for i = 0 to len - 1 do
+      Hashtbl.add index_map array1.(i) i
+    done;
+    let permutation = Array.make len 0 in
+    for i = 0 to len - 1 do
+      permutation.(i) <- Hashtbl.find index_map array2.(i)
+    done;
+    permutation
+
+
+(* from an array of (key * 'a), returns the permutation (int array)
+   describing the sorting of the keys (taking into account intervals, number or string keys)
+   return a JSON list of int, ready to be sent to grew-match frontend *)
+let permutation_json_list arr =
+  let keys = Array.map fst arr in
+
+  let _ =
+    (* step 1) try to sort all the array as intervals, raise Not_interval if some elt is not an interval or __*__ *)
+    try Array.sort 
+      (fun x y -> match (x,y) with
+        | (Some k1, Some k2) -> Stdlib.compare (get_left_interval k1) (get_left_interval k2)
+        | _ -> raise Not_interval
+      ) keys
+    with Not_interval -> 
+
+      (* step 2) try to sort all the array as floats, raise Failure if some elt is not a float *)
+      try Array.sort 
+        (fun x y -> match (x,y) with
+          (* __*__ s the highest possible value, it is always the last row/col *)
+          | (Some "__*__", Some _) -> 1
+          | (Some _, Some "__*__") -> -1
+          | (Some k1, Some k2) -> Stdlib.compare (float_of_string k1) (float_of_string k2)
+          | _ -> raise (Failure "not all floats")
+        ) keys
       with Failure _ ->
-  (* 3) sort alphabetically *)
-    Array.sort (fun (k1,_) (k2,_) -> Stdlib.compare k1 k2) arr 
+
+        (* 3) sort alphabetically *)
+        Array.sort (fun k1 k2 -> match (k1, k2) with
+          (* __*__ s the highest possible value, it is always the last row/col *)
+          | (Some "__*__", _) -> 1 
+          | (_, Some "__*__") -> -1
+          | _ -> Stdlib.compare k1 k2) keys in
+
+  compute_permutation (Array.map fst arr) keys
+  |> Array.map (fun i -> `Int i)
+  |> Array.to_list
+

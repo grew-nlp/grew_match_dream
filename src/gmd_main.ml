@@ -48,6 +48,7 @@ let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
 
   let folded_arr_1 = if flag_fold1 then reduce_arr arr_1 else arr_1
   and folded_arr_2 = reduce_arr arr_2
+
   and folded_clusters = 
     Clustered.merge_keys 
       (Some "__*__")
@@ -64,6 +65,8 @@ let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
     `Assoc [
       ("rows", json_values_sizes folded_arr_1); 
       ("columns", json_values_sizes folded_arr_2);
+      ("permut_rows", `List (permutation_json_list folded_arr_1));
+      ("permut_columns", `List (permutation_json_list folded_arr_2));
       ("total_rows_nb", `Int (Array.length arr_1));
       ("total_columns_nb", `Int (Array.length arr_2));
       ("cells", `List (
@@ -216,6 +219,8 @@ let search_multi param =
     `Assoc [
       ("rows", json_values_sizes folded_arr_1); 
       ("columns", json_values_sizes folded_arr_2);
+      ("permut_rows", `List (permutation_json_list folded_arr_1));
+      ("permut_columns", `List (permutation_json_list folded_arr_2));
       ("total_rows_nb", `Int (Array.length arr_1));
       ("total_columns_nb", `Int (Array.length arr_2));
       ("cells", `List (
