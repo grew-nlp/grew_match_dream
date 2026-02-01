@@ -41,6 +41,17 @@ let array_of_layer sorting (layer_size : int String_opt_map.t) =
   arr
 
 (* ============================================================================================================================ *)
+let json_sorted_key arr : Yojson.Basic.t =
+  let key_array = arr |> Array.map fst in
+  let json_by_size = key_array |> Array.to_list |> List.map Gmd_utils.json_string_of_key |> (fun x -> `List x) in
+  let _ = Gmd_utils.key_sort key_array in
+  let json_by_name = key_array |> Array.to_list |> List.map Gmd_utils.json_string_of_key |> (fun x -> `List x) in
+    `Assoc [
+      "by_size", json_by_size;
+      "by_name", json_by_name;
+    ]
+
+(* ============================================================================================================================ *)
 (* shared code for dim 2 results (mono corpus with 2 clusterings or multi corpus with 1 clustering *)
 let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
   let arr_1 = array_of_layer Size layer1 in
@@ -60,9 +71,16 @@ let search_cluster_grid flag_fold1 layer1 layer2 top_clusters =
       ] 
       top_clusters in
 
+  let full_table = `Assoc [
+      "data", Clustered.to_json (fun c -> `Int (Array.length c.Session.data)) Session.empty_cluster top_clusters;
+      "rows", json_sorted_key arr_1;
+      "cols", json_sorted_key arr_2;
+    ] in
+
   (
     ("cluster_grid",
     `Assoc [
+      ("full_table", full_table);
       ("rows", json_values_sizes folded_arr_1); 
       ("columns", json_values_sizes folded_arr_2);
       ("permut_rows", `List (permutation_json_list folded_arr_1));
@@ -195,8 +213,6 @@ let search_multi param =
     ] in
   json_output
 
-
-
   (* ============================================================================================================================ *)
   let count_cluster_grid flag_fold1 layer1 layer2 top_clusters =
     let arr_1 = array_of_layer Size layer1 in
@@ -214,9 +230,16 @@ let search_multi param =
           filter arr_2
         ] 
         top_clusters in
+    
+    let full_table = `Assoc [
+      "data", Clustered.to_json (fun c -> `Int c) 0 top_clusters;
+      "rows", json_sorted_key arr_1;
+      "cols", json_sorted_key arr_2;
+    ] in
 
     ("cluster_grid",
     `Assoc [
+      ("full_table", full_table);
       ("rows", json_values_sizes folded_arr_1); 
       ("columns", json_values_sizes folded_arr_2);
       ("permut_rows", `List (permutation_json_list folded_arr_1));
