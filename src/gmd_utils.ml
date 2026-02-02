@@ -187,8 +187,11 @@ let json_values_sizes values_sizes =
       )
     )
 
+let concat_filenames = function
+  | [] -> failwith "empty list in concat_filenames"
+  | h::t -> List.fold_left Filename.concat h t 
 
-let datadir uuid = Filename.concat (Dream_config.get_string "storage") (Filename.concat "data" uuid)
+let datadir uuid = concat_filenames [Dream_config.get_string "storage"; "data"; uuid]
 
 (* Use PHP way to compute uniqid (see: https://www.php.net/manual/en/function.uniqid.php#95001)*)
 let php_uniqid () = 
@@ -223,53 +226,44 @@ let load_corpusbank corpusbank : (Corpus_desc.t * int) String_map.t =
     !map
   with Sys_error _ -> !map
 
-
-let concat_filenames = function
-  | [] -> failwith "empty list in concat_filenames"
-  | h::t -> List.fold_left Filename.concat h t 
-
 module Draw_config = struct
-  type draw_config = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}
-  let current = ref { lemma=false; upos=false; xpos=false; features=false; tf_wf=false; context=false; pid=true; } 
+  type t = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}
 
+  let from_param param = {
+    lemma = (match get_bool_attr_opt "lemma" param with Some v -> v | None -> false);
+    upos = (match get_bool_attr_opt "upos" param with Some v -> v | None -> false);
+    xpos = (match get_bool_attr_opt "xpos" param with Some v -> v | None -> false);
+    features = (match get_bool_attr_opt "features" param with Some v -> v | None -> false);
+    tf_wf = (match get_bool_attr_opt "tf_wf" param with Some v -> v | None -> false);
+    context = (match get_bool_attr_opt "context" param with Some v -> v | None -> false);
+    pid = (match get_bool_attr_opt "pid" param with Some v -> v | None -> true);
 
-  let update param = current :=
-  {
-    lemma = (match get_bool_attr_opt "lemma" param with Some v -> v | None -> !current.lemma);
-    upos = (match get_bool_attr_opt "upos" param with Some v -> v | None -> !current.upos);
-    xpos = (match get_bool_attr_opt "xpos" param with Some v -> v | None -> !current.xpos);
-    features = (match get_bool_attr_opt "features" param with Some v -> v | None -> !current.features);
-    tf_wf = (match get_bool_attr_opt "tf_wf" param with Some v -> v | None -> !current.tf_wf);
-    context = (match get_bool_attr_opt "context" param with Some v -> v | None -> !current.context);
-    pid = (match get_bool_attr_opt "pid" param with Some v -> v | None -> !current.pid);
   }
-
-  let filter = function
+  let filter t = function
     | "phon" | "form" -> true
-    | "lemma" -> !current.lemma
-    | "upos" | "cat" -> !current.upos
-    | "xpos" | "pos" -> !current.xpos
-    | "textform" | "wordform" -> !current.tf_wf
+    | "lemma" -> t.lemma
+    | "upos" | "cat" -> t.upos
+    | "xpos" | "pos" -> t.xpos
+    | "textform" | "wordform" -> t.tf_wf
     | "SpaceAfter" -> false
     | "AlignBegin" | "AlignEnd" -> false
     | "_speaker" | "_start" | "_stop" -> false 
-    | _ -> !current.features
+    | _ -> t.features
 end
 
 
 
 
 (* ============================================================================================================================ *)
-let save_dep uuid ~config ?audio_info rtl base sent_id deco graph sentence meta =
+let save_dep uuid ?audio_info rtl base sent_id sentence meta dep =
   try 
     let folder = datadir uuid in
-    let filename = sprintf "%s.svg" base in
-    let dep = Graph.to_dep ~filter:Draw_config.filter ~pid:(!Draw_config.current).pid ~deco ~config graph in
-    let _ = Dep2pictlib.save_svg ~filename:(Filename.concat folder filename) (Dep2pictlib.from_dep ~rtl dep) in
+    let basename = sprintf "%s.svg" base in
+    let _ = Dep2pictlib.save_svg ~filename:(Filename.concat folder basename) (Dep2pictlib.from_dep ~rtl dep) in
     let shift = Dep2pictlib.highlight_shift () in
     let data = `Assoc (CCList.filter_map CCFun.id [
         Some ("kind", `String "ITEM");
-        Some ("filename", `String (Filename.concat uuid filename));
+        Some ("filename", `String (Filename.concat uuid basename));
         Some ("sent_id", `String sent_id);
         Some ("sentence", `String sentence);
         Some ("meta", `Assoc (List.map (fun (k,v) -> (k, `String v)) meta));
@@ -280,17 +274,16 @@ let save_dep uuid ~config ?audio_info rtl base sent_id deco graph sentence meta 
   with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)]))
 
 (* ============================================================================================================================ *)
-let save_dot uuid ~config base sent_id deco graph sentence meta =
+let save_dot uuid base sent_id graph sentence meta dot =
   let folder = datadir uuid in
-  let dot = Graph.to_dot ~deco ~config graph in
   let temp_file_name,out_ch = Filename.open_temp_file ~mode:[Open_rdonly;Open_wronly;Open_text] "grew_" ".dot" in
   fprintf out_ch "%s" dot;
   close_out out_ch;
-  let filename = sprintf "%s.svg" base in
-  ignore (Sys.command(sprintf "dot -Tsvg -o %s %s " (Filename.concat folder filename) temp_file_name));
+  let basename = sprintf "%s.svg" base in
+  ignore (Sys.command(sprintf "dot -Tsvg -o %s %s " (Filename.concat folder basename) temp_file_name));
   let data = `Assoc [
       ("kind", `String "ITEM");
-      ("filename", `String (Filename.concat uuid filename));
+      ("filename", `String (Filename.concat uuid basename));
       ("sent_id", `String sent_id);
       ("sentence", `String sentence);
       ("meta", `Assoc (List.map (fun (k,v) -> (k, `String v)) meta));

@@ -37,6 +37,7 @@ module Session = struct
   type t = {
     last: float;              (* Unix.gettimeofday of the last interaction time *)
     clusters: cluster Clustered.t;
+    draw_config: Draw_config.t;
   }
 end
 

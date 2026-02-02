@@ -134,9 +134,7 @@ let search param =
   let _ = Unix.mkdir (datadir uuid) 0o755 in
 
   let display = get_attr "display" param in
-  let _ = Draw_config.update display in
   let ordering = get_string_attr_opt "order" display in
-
   let corpus_id = get_string_attr "corpus" param in
 
   let (request, full_clusters, status, ratio) = search_in_corpus_id param ordering corpus_id in
@@ -151,7 +149,12 @@ let search param =
       search_cluster_grid true som_size1 som_size2 full_clusters
     | _ -> failwith "Dim > 2 not handled" in
 
-  Client_map.t := String_map.add uuid { Session.last = Unix.gettimeofday (); clusters }  !Client_map.t;
+  let draw_config = Draw_config.from_param display in
+
+  Client_map.t := 
+    String_map.add uuid 
+    { Session.last = Unix.gettimeofday (); clusters; draw_config }
+    !Client_map.t;
   
   let json_output = `Assoc [
       ("uuid", `String uuid);
@@ -171,7 +174,6 @@ let search_multi param =
   let _ = Unix.mkdir (datadir uuid) 0o755 in
 
   let display = get_attr "display" param in
-  let _ = Draw_config.update display in
   let ordering = get_string_attr_opt "order" display in
 
   let corpus_id_list = get_attr "corpus_list" param |> Yojson.Basic.Util.to_list |> List.map Yojson.Basic.Util.to_string in
@@ -202,7 +204,12 @@ let search_multi param =
       search_cluster_grid false lang_layer clust_layer top_clusters
     | _ -> failwith "Dim > 1 not handled" in
 
-  Client_map.t := String_map.add uuid { Session.last = Unix.gettimeofday (); clusters }  !Client_map.t;
+  let draw_config = Draw_config.from_param display in
+
+  Client_map.t := 
+    String_map.add uuid
+      { Session.last = Unix.gettimeofday (); clusters; draw_config }
+      !Client_map.t;
   
   let json_output = `Assoc [
       ("uuid", `String uuid);
@@ -338,6 +345,7 @@ let more_results param =
     let uuid = get_string_attr "uuid" param in
     let cluster_path = get_named_path_attr "named_cluster_path" param in
     let session = String_map.find uuid !Client_map.t in
+
     let cluster = Clustered.get_opt Session.empty_cluster cluster_path session.Session.clusters in
     let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
     let config = Corpus_desc.get_config corpus_desc in
@@ -377,7 +385,7 @@ let more_results param =
             let ((sentence, audio_bounds, sound_url), sentence_filename) = rich_sentence ~deco index in
 
               let (sent_with_context, extended_audio_bounds) =
-              if !Draw_config.current.context
+              if session.draw_config.context
               then
                 let (prev_sent, new_left_bound) =
                   match rich_sentence (index-1) with
@@ -417,19 +425,24 @@ let more_results param =
                   | (true, Some url, Some (i,f)) -> Some (sprintf "%s#t=%g,%g" url i f)
                   | (true, Some url, None) -> Some (sprintf "%s" url)
                   | _ -> None in
-                save_dep uuid ~config ?audio_info rtl filename list_item deco graph sent_with_context meta_list
-              | Some -1 -> save_dot uuid ~config filename list_item deco graph sent_with_context meta_list
-              | Some i ->
-                let subgraph = Matching.subgraph graph occ.matching i in
-                save_dot uuid ~config filename list_item deco subgraph sent_with_context meta_list in
+                let filter = Draw_config.filter session.Session.draw_config in
+                let dep = Graph.to_dep ~filter ~pid:session.Session.draw_config.pid ~deco ~config graph in
+                save_dep uuid ?audio_info rtl filename list_item sent_with_context meta_list dep
+              | Some depth ->
+                  let subgraph =
+                    if depth = -1
+                    then graph
+                    else Matching.subgraph graph occ.matching depth in
+                let dot = Graph.to_dot ~deco ~config graph in
+                save_dot uuid filename list_item subgraph sent_with_context meta_list dot in
             json
         ) (CCList.range' start_index stop_index) in
 
     Client_map.t :=
       String_map.add uuid
-        {  
+        { session with 
           Session.last=Unix.gettimeofday ();
-          clusters = Clustered.update (fun _ -> { cluster with next=stop_index}) cluster_path Session.empty_cluster session.clusters ;
+          clusters = Clustered.update (fun _ -> { cluster with next=stop_index}) cluster_path Session.empty_cluster session.clusters;
         }
         !Client_map.t;
     `Assoc [("more", `Bool more_flag); ("items", `List json_list)]
@@ -556,31 +569,32 @@ let conll param =
 (* ============================================================================================================================ *)
 let parallel param = 
   try
-    let uuid = get_string_attr "uuid" param in
     let corpus_id = get_string_attr "corpus" param in
-    let sent_id = get_string_attr "sent_id" param in
 
     let (_,corpus,corpus_desc) = Table.get_corpus corpus_id in
-    let config = Corpus_desc.get_config corpus_desc in
+    let sent_id = get_string_attr "sent_id" param in
     match Corpus.graph_of_sent_id sent_id corpus with
     | None -> raise (Error (`Assoc [("message", `String "Unknown sent_id"); ("sent_id", `String sent_id)]))
     | Some graph ->
+      let uuid = get_string_attr "uuid" param in
+      let config = Corpus_desc.get_config corpus_desc in
+      let filename = Filename.concat (datadir uuid) (sprintf "%04x%04x.svg" (Random.int 0xFFFF) (Random.int 0xFFFF)) in
       match Corpus.is_conll corpus with
       | true ->
-        let dep = Graph.to_dep ~filter: Draw_config.filter ~config graph in
+        let session = String_map.find uuid !Client_map.t in
+        let filter = Draw_config.filter session.draw_config in
+        let dep = Graph.to_dep ~filter ~config graph in
         let d2p =
           try Dep2pictlib.from_dep ~rtl:(Corpus_desc.get_flag "rtl" corpus_desc) dep
           with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)])) in
-        let filename = sprintf "%04x%04x.svg" (Random.int 0xFFFF) (Random.int 0xFFFF) in
-        let _ = Dep2pictlib.save_svg ~filename:(Filename.concat (datadir uuid) filename) d2p in
+        let _ = Dep2pictlib.save_svg ~filename d2p in
         `String filename
       | false ->
         let dot = Graph.to_dot ~config graph in
         let temp_file_name,out_ch = Filename.open_temp_file ~mode:[Open_rdonly;Open_wronly;Open_text] "grew_" ".dot" in
         fprintf out_ch "%s" dot;
         close_out out_ch;
-        let filename = sprintf "%04x%04x.svg" (Random.int 0xFFFF) (Random.int 0xFFFF) in
-        ignore (Sys.command(sprintf "dot -Tsvg -o %s %s " (Filename.concat (datadir uuid) filename) temp_file_name));
+        ignore (Sys.command (sprintf "dot -Tsvg -o %s %s" filename temp_file_name));
         `String filename
   with Not_found -> raise (Error (`Assoc [("message", `String "parallel service: not connected")]))
 
@@ -622,7 +636,7 @@ let get_build_file param =
   let file = get_string_attr "file" param in
   let (corpus_desc, _) = String_map.find corpus_id !Global.corpora_map in 
   let directory = Corpus_desc.get_directory corpus_desc in
-  let full_file = Filename.concat directory (Filename.concat "_build_grew" (Filename.concat corpus_id file)) in
+  let full_file = concat_filenames [directory; "_build_grew"; corpus_id; file] in
   let data = CCIO.(with_in full_file read_all) in
     `String data
 
