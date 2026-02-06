@@ -578,7 +578,8 @@ let parallel param =
     | Some graph ->
       let uuid = get_string_attr "uuid" param in
       let config = Corpus_desc.get_config corpus_desc in
-      let filename = Filename.concat (datadir uuid) (sprintf "%04x%04x.svg" (Random.int 0xFFFF) (Random.int 0xFFFF)) in
+      let basename = sprintf "%04x%04x.svg" (Random.int 0xFFFF) (Random.int 0xFFFF) in
+      let filename = Filename.concat (datadir uuid) basename in
       match Corpus.is_conll corpus with
       | true ->
         let session = String_map.find uuid !Client_map.t in
@@ -588,14 +589,14 @@ let parallel param =
           try Dep2pictlib.from_dep ~rtl:(Corpus_desc.get_flag "rtl" corpus_desc) dep
           with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)])) in
         let _ = Dep2pictlib.save_svg ~filename d2p in
-        `String filename
+        `String basename
       | false ->
         let dot = Graph.to_dot ~config graph in
         let temp_file_name,out_ch = Filename.open_temp_file ~mode:[Open_rdonly;Open_wronly;Open_text] "grew_" ".dot" in
         fprintf out_ch "%s" dot;
         close_out out_ch;
         ignore (Sys.command (sprintf "dot -Tsvg -o %s %s" filename temp_file_name));
-        `String filename
+        `String basename
   with Not_found -> raise (Error (`Assoc [("message", `String "parallel service: not connected")]))
 
 (* ============================================================================================================================ *)
