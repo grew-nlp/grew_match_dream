@@ -251,7 +251,31 @@ module Draw_config = struct
     | _ -> t.features
 end
 
-
+let layered_meta meta =
+  let sorted_meta = List.sort Stdlib.compare meta in
+  let rec loop acc = function
+    | [] -> acc
+    | (k, v) :: tail ->
+        let parts = String.split_on_char '>' k in
+        begin match (acc, parts) with
+        | ((main_k, (main_v, sub_list)) :: tail_acc, [main; sub]) 
+          when main = main_k ->
+            loop ((main_k, (main_v, (sub, v) :: sub_list)) :: tail_acc) tail
+        | _ -> 
+            loop ((k, (v, [])) :: acc) tail
+        end in
+  let nested_meta = loop [] sorted_meta in
+  let (json : Yojson.Basic.t) = `List (
+    List.map 
+      (fun (k,(v,sub)) -> 
+        `Assoc [
+          "key", `String k;
+          "value", `String v;
+          "sub", `Assoc (List.map (fun (sk,sv) -> (sk, `String sv)) sub)
+        ]
+      ) nested_meta
+    ) in
+  json
 
 
 (* ============================================================================================================================ *)
@@ -266,7 +290,7 @@ let save_dep uuid ?audio_info rtl base sent_id sentence meta dep =
         Some ("filename", `String (Filename.concat uuid basename));
         Some ("sent_id", `String sent_id);
         Some ("sentence", `String sentence);
-        Some ("meta", `Assoc (List.map (fun (k,v) -> (k, `String v)) meta));
+        Some ("meta", layered_meta meta);
         CCOption.map (fun v -> ("shift", `Float v)) shift;
         CCOption.map (fun s -> ("audio", `String s)) audio_info;
       ]) in 
@@ -286,7 +310,7 @@ let save_dot uuid base sent_id graph sentence meta dot =
       ("filename", `String (Filename.concat uuid basename));
       ("sent_id", `String sent_id);
       ("sentence", `String sentence);
-      ("meta", `Assoc (List.map (fun (k,v) -> (k, `String v)) meta));
+      ("meta", layered_meta meta);
       ("code", match Graph.get_meta_opt "code" graph with Some s -> `String s | None -> `Null);
       ("url", match Graph.get_meta_opt "url" graph with Some s -> `String s | None -> `Null);
     ] in
