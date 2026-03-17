@@ -642,7 +642,7 @@ let get_build_file param =
     `String data
 
 (* ============================================================================================================================ *)
-let dowload_tgz param =
+let download_tgz param =
   let corpus_id = get_string_attr "corpus" param in
   let tgz_file = sprintf "%s.tgz" corpus_id in
   let (corpus_desc, _) = String_map.find corpus_id !Global.corpora_map in 

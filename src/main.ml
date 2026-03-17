@@ -102,7 +102,7 @@ let all_routes =
       ("tsv_export", tsv_export, true);
       ("conll_export", conll_export, true);
       ("parallel", parallel, true);
-      ("dowload_tgz", dowload_tgz, true);
+      ("download_tgz", download_tgz, true);
     ]
 
 let _ =
