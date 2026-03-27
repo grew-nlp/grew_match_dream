@@ -357,14 +357,13 @@ let more_results param =
     let more_flag = stop_index < max_index in
 
     let rich_sentence ?deco index =
-      try
-        let graph = Corpus.get_graph index corpus in
-        let sentence_filename = Graph.get_meta_opt "_filename" graph in
+      let graph = Corpus.get_graph index corpus in
+      let audio_info =
         match (audio, Corpus.is_conll corpus) with
-          | (true, _) -> (Graph.to_sentence_audio ?deco graph, sentence_filename)
-          | (false, true) -> (((match Graph.to_sentence ?deco graph with "" -> Corpus.get_text index corpus | x -> x), None, None), sentence_filename)
-          | (false, false) -> ((Corpus.get_text index corpus, None, None), sentence_filename)
-      with _ -> (("", None, None), None) in
+          | (true, _) -> Graph.to_sentence_audio ?deco graph
+          | (_, true) -> ((match Graph.to_sentence ?deco graph with "" -> Corpus.get_text index corpus | x -> x), None, None)
+          | (_, false) -> (Corpus.get_text index corpus, None, None) in
+      (audio_info, Graph.get_meta_opt "document_id" graph) in
 
     let json_list =
       List.map
@@ -382,7 +381,7 @@ let more_results param =
             | 1 -> occ.sent_id
             | len -> sprintf "%s [%d/%d]" occ.sent_id (len - occ.pos_in_graph) len in
 
-            let ((sentence, audio_bounds, sound_url), sentence_filename) = rich_sentence ~deco index in
+            let ((sentence, audio_bounds, sound_url), document_id) = rich_sentence ~deco index in
 
               let (sent_with_context, extended_audio_bounds) =
               if session.draw_config.context
@@ -391,13 +390,13 @@ let more_results param =
                   match rich_sentence (index-1) with
                   | (("",_,_),_) -> (None, None)
                   | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                  | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
+                  | (_,sf) when sf <> document_id -> (None, None) (* different document *)
                   | ((prev_text,prev_bounds,_),_) -> (Some prev_text, CCOption.map fst prev_bounds) in
                 let (next_sent, new_right_bound) =
                   match rich_sentence (index+1) with
                   | (("",_,_),_) -> (None, None)
                   | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                  | (_,sf) when sf <> sentence_filename -> (None, None) (* different filenames *)
+                  | (_,sf) when sf <> document_id -> (None, None) (* different document *)
                   | ((next_text,next_bounds,_),_) -> (Some next_text, CCOption.map snd next_bounds) in
                 (sprintf "%s<font color=\"#FC5235\">%s</font>%s"
                   (match prev_sent with None -> "" | Some p -> p^"</br>")
@@ -409,13 +408,7 @@ let more_results param =
                 )
               else (sprintf "<font color=\"#FC5235\">%s</font>" sentence, audio_bounds) in
 
-            let meta_list =
-              List.filter
-                (function
-                | ("sent_id",_) | ("sound_url",_) | ("code",_) | ("url",_) | ("_filename", _) -> false
-                | (s,_) when CCString.prefix ~pre:"##" s -> false
-                | _ -> true
-                ) (Graph.get_meta_list graph) in
+            let meta_list = Graph.get_meta_list graph in
 
             let json =
               match Corpus_desc.get_display corpus_desc with
@@ -543,7 +536,11 @@ let conll_export param =
         ) session.clusters Int_set.empty in
     let _ = Int_set.iter
       (fun graph_index ->
-        Corpus.get_graph graph_index corpus |> Graph.to_json |> Conll.of_json |> Conll.to_string ?columns ~config |> fprintf out_ch "%s\n"
+        Corpus.get_graph graph_index corpus 
+        |> Graph.to_json 
+        |> Conll.of_json 
+        |> Conll.to_string ?columns ~config 
+        |> fprintf out_ch "%s\n"
       ) graph_index_set in
 
     close_out out_ch;
