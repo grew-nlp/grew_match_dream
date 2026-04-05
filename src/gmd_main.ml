@@ -607,6 +607,23 @@ let save param =
   with Not_found -> raise (Error (`Assoc [("message", `String "save service: not connected")]))
 
 (* ============================================================================================================================ *)
+let get_single (param : Yojson.Basic.t) : Yojson.Basic.t =
+  let open Yojson.Basic.Util in
+  let single = param |> member "single" |> to_string in
+  match get_compiled_corpus single with
+  | Some corpus_desc ->
+    `List [
+      `Assoc [
+        "id", `String "Grew_match_single";
+        "mode", `String "syntax";
+        "style", `String "single";
+        "corpora", `List [Corpus_desc.to_json corpus_desc]
+      ]
+  ]
+  | None ->
+    `Assoc [("id", `String single); ("error", `String "No description found")]
+
+(* ============================================================================================================================ *)
 let get_corpora_desc param =
   let open Yojson.Basic.Util in
   let groups = param |> member "instance_desc" |> to_list in

@@ -83,9 +83,13 @@ let new_corpus_route =
         let session_id = Printf.sprintf "%04x%04x%04x%04x" (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) in
         let upload_dir = Filename.concat upload session_id in
         FileUtil.mkdir ~parent:true upload_dir;
-
         match%lwt stream_request ~upload_dir request with
         | (_map,_files) ->
+          let corpusbank = Dream_config.get_string "corpusbank" in
+          Yojson.Basic.to_file
+            (Filename.concat corpusbank (session_id ^ ".json"))
+            (`List [`Assoc [("id", `String session_id); ("directory", `String upload_dir)]]);
+          load_data();
           reply (`String session_id)
     )
 
@@ -111,6 +115,7 @@ let all_routes =
       ("search", search, true);
       ("search_multi", search_multi, true);
       ("get_corpora_desc", get_corpora_desc, false);
+      ("get_single", get_single, false);
       ("conll", conll, true);
       ("count", count, true);
       ("count_multi", count_multi, true);

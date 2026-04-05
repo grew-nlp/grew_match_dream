@@ -3,6 +3,8 @@ open Dep2pictlib
 open Dream_utils
 open Grewlib
 
+open Gmd_global
+
 module String_set = struct
   include String_set
   let to_json t = `List (List.map (fun x -> `String x) (elements t))
@@ -225,6 +227,16 @@ let load_corpusbank corpusbank : (Corpus_desc.t * int) String_map.t =
     loop ();
     !map
   with Sys_error _ -> !map
+
+let get_compiled_corpus corpus_id =
+  match String_map.find_opt corpus_id !Global.corpora_map with
+  | Some (corpus_desc, corpus_index) -> 
+    let () = Corpus_desc.compile corpus_desc in
+    let new_corpus_desc = Corpus_desc.update_built_files corpus_desc in
+    let () = Global.corpora_map := String_map.add corpus_id (new_corpus_desc, corpus_index) !Global.corpora_map in
+    Some new_corpus_desc
+  | None -> None
+
 
 module Draw_config = struct
   type t = { lemma: bool; upos:bool; xpos:bool; features:bool; tf_wf:bool; context:bool; pid: bool;}
