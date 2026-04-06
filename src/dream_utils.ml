@@ -151,7 +151,7 @@ let _reply_error s =
 let reply_error s = Printf.ksprintf _reply_error s
 
 (* General function for handling request with a mix of parameter and files *)
-let stream_request request = 
+let stream_request ?upload_dir request = 
   let buff = Buffer.create 32 in
   let rec loop (param_map, file_list) =
     match%lwt Dream.upload request with
@@ -166,9 +166,11 @@ let stream_request request =
           | Some chunk -> bprintf buff "%s" chunk; save_chunk_param () in
         save_chunk_param ()
       end
-    | Some (_, Some _, _) ->
-      let filename = Filename.concat "upload" (sprintf "%.0f" (Unix.gettimeofday() *. 1000.)) in
-      let out_ch = open_out filename in
+    | Some (_, Some filename, _) ->
+      match upload_dir with
+      | None -> stop "No `upload_dir` specified in stream_request"
+      | Some dir -> 
+      let out_ch = open_out (Filename.concat dir filename) in
       let rec save_chunk () =
         match%lwt Dream.upload_part request with
         | None -> close_out out_ch; loop (param_map, filename :: file_list)

@@ -74,6 +74,21 @@ let cors_middleware handler req =
       |> ignore;
       Lwt.return res
 
+let new_corpus_route =
+  Dream.post "new_corpus"
+    (fun request ->
+      match Dream_config.get_string_opt "upload" with
+      | None -> stop "Missing `upload` in config"
+      | Some upload ->
+        let session_id = Printf.sprintf "%04x%04x%04x%04x" (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) in
+        let upload_dir = Filename.concat upload session_id in
+        FileUtil.mkdir ~parent:true upload_dir;
+
+        match%lwt stream_request ~upload_dir request with
+        | (_map,_files) ->
+          reply (`String session_id)
+    )
+
 let static_route =
   Dream.get "/**" (Dream.static "static")
 
@@ -83,6 +98,7 @@ let basic_routes = [
   refresh_all_route;
   reload_route;
   refresh_corpus_route;
+  new_corpus_route
 ]
 
 let all_routes =
@@ -110,6 +126,7 @@ let _ =
     let required = ["port"] in
     Dream_config.load ~required ();
     Log.init ?prefix:(Dream_config.get_string_opt "prefix") ();
+    let _ = Random.self_init () in
     let _ = load_data () in
     let _ = refresh () in
     Dream.run
