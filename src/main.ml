@@ -1,6 +1,7 @@
 open Dream_utils
 open Gmd_types
 open Gmd_main
+open Grewlib
 
 let ping_route =
   Dream.post "ping" (fun _ -> Dream.html ~headers:["Content-Type", "text/plain"] "{}")
@@ -74,6 +75,8 @@ let cors_middleware handler req =
       |> ignore;
       Lwt.return res
 
+
+
 let new_corpus_route =
   Dream.post "new_corpus"
     (fun request ->
@@ -86,11 +89,14 @@ let new_corpus_route =
         match%lwt stream_request ~upload_dir request with
         | (_map,_files) ->
           let corpusbank = Dream_config.get_string "corpusbank" in
+          let corpus_desc = `Assoc [("id", `String session_id); ("directory", `String upload_dir)] in
+          Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
           Yojson.Basic.to_file
             (Filename.concat corpusbank (session_id ^ ".json"))
-            (`List [`Assoc [("id", `String session_id); ("directory", `String upload_dir)]]);
+            (`List [corpus_desc]);
           load_data();
-          reply (`String session_id)
+          let json = wrap (fun () -> `String session_id) () in
+          reply json
     )
 
 let static_route =

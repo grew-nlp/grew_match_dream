@@ -610,8 +610,8 @@ let save param =
 let get_single (param : Yojson.Basic.t) : Yojson.Basic.t =
   let open Yojson.Basic.Util in
   let single = param |> member "single" |> to_string in
-  match get_compiled_corpus single with
-  | Some corpus_desc ->
+  match String_map.find_opt single !Global.corpora_map with
+  | Some (corpus_desc,_) ->
     `List [
       `Assoc [
         "id", `String "Grew_match_single";
@@ -619,7 +619,7 @@ let get_single (param : Yojson.Basic.t) : Yojson.Basic.t =
         "style", `String "single";
         "corpora", `List [Corpus_desc.to_json corpus_desc]
       ]
-  ]
+    ]
   | None ->
     `Assoc [("id", `String single); ("error", `String "No description found")]
 
