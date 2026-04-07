@@ -3,8 +3,6 @@ open Dep2pictlib
 open Dream_utils
 open Grewlib
 
-open Gmd_global
-
 module String_set = struct
   include String_set
   let to_json t = `List (List.map (fun x -> `String x) (elements t))

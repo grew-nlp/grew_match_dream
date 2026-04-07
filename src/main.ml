@@ -88,8 +88,20 @@ let new_corpus_route =
         FileUtil.mkdir ~parent:true upload_dir;
         match%lwt stream_request ~upload_dir request with
         | (_map,_files) ->
+          let (config, snippets) =
+          match String_map.find_opt "schema" _map with 
+          | Some "UD" -> ("ud", "ud")
+          | Some "SUD" -> ("sud", "sud")
+          | Some "Parseme" -> ("ud", "parseme") 
+          | Some s -> stop "Unknown shema `%s`" s
+          | None -> stop "No schema given" in
           let corpusbank = Dream_config.get_string "corpusbank" in
-          let corpus_desc = `Assoc [("id", `String session_id); ("directory", `String upload_dir)] in
+          let corpus_desc = `Assoc [
+            ("id", `String session_id);
+            ("config", `String config);
+            ("snippets", `String snippets);
+            ("directory", `String upload_dir);
+          ] in
           Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
           Yojson.Basic.to_file
             (Filename.concat corpusbank (session_id ^ ".json"))
