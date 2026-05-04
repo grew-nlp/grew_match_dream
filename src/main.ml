@@ -76,38 +76,40 @@ let cors_middleware handler req =
       Lwt.return res
 
 
-
 let new_corpus_route =
   Dream.post "new_corpus"
     (fun request ->
       match Dream_config.get_string_opt "upload" with
-      | None -> stop "Missing `upload` in config"
+      | None -> wrap (fun () -> error "Missing `upload` in config") () |> reply
       | Some upload ->
         let session_id = Printf.sprintf "%04x%04x%04x%04x" (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) in
         let upload_dir = Filename.concat upload session_id in
         FileUtil.mkdir ~parent:true upload_dir;
         match%lwt stream_request ~upload_dir request with
-        | (_map,_files) ->
-          let (config, snippets) =
-          match String_map.find_opt "schema" _map with 
-          | Some "UD" -> ("ud", "ud")
-          | Some "SUD" -> ("sud", "sud")
-          | Some "Parseme" -> ("ud", "parseme") 
-          | Some s -> stop "Unknown shema `%s`" s
-          | None -> stop "No schema given" in
-          let corpusbank = Dream_config.get_string "corpusbank" in
-          let corpus_desc = `Assoc [
-            ("id", `String session_id);
-            ("config", `String config);
-            ("snippets", `String snippets);
-            ("directory", `String upload_dir);
-          ] in
-          Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
-          Yojson.Basic.to_file
-            (Filename.concat corpusbank (session_id ^ ".json"))
-            (`List [corpus_desc]);
-          load_data();
-          let json = wrap (fun () -> `String session_id) () in
+        | (param_map,_) ->
+          let json = wrap
+          (fun () -> 
+            let (config, snippets) =
+            match String_map.find_opt "schema" param_map with 
+            | Some "UD" -> ("ud", "ud")
+            | Some "SUD" -> ("sud", "sud")
+            | Some "Parseme" -> ("ud", "parseme") 
+            | Some s -> error "Unknown schema `%s`" s
+            | None -> error "No schema given" in
+            let corpusbank = Dream_config.get_string "corpusbank" in
+            let corpus_desc = `Assoc [
+              ("id", `String session_id);
+              ("config", `String config);
+              ("snippets", `String snippets);
+              ("directory", `String upload_dir);
+            ] in
+            Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
+            Yojson.Basic.to_file
+              (Filename.concat corpusbank (session_id ^ ".json"))
+              (`List [corpus_desc]);
+            load_data();
+            `String session_id
+          ) () in
           reply json
     )
 
