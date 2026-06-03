@@ -1,4 +1,5 @@
 open Dream_utils
+open Gmd_utils
 open Gmd_types
 open Gmd_main
 open Grewlib
@@ -97,18 +98,28 @@ let new_corpus_route =
             | Some s -> error "Unknown schema `%s`" s
             | None -> error "No schema given" in
             let corpusbank = Dream_config.get_string "corpusbank" in
-            let corpus_desc = `Assoc [
-              ("id", `String session_id);
-              ("config", `String config);
-              ("snippets", `String snippets);
-              ("directory", `String upload_dir);
-            ] in
+            let corpus_desc = [
+              Some ("id", `String session_id);
+              Some ("config", `String config);
+              String_map.find_opt "name" param_map |> CCOption.map (fun v -> ("name", `String v));
+              Some ("snippets", `String snippets);
+              Some ("directory", `String upload_dir);
+            ] 
+            |> CCList.filter_map CCFun.id
+            |> (fun x -> `Assoc x)
+          
+          in
             Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
+            let desc_file = concat_filenames [upload_dir; "_build_grew"; session_id; "desc.json"] in
+            let desc = Yojson.Basic.from_file desc_file in
             Yojson.Basic.to_file
               (Filename.concat corpusbank (session_id ^ ".json"))
               (`List [corpus_desc]);
             load_data();
-            `String session_id
+            `Assoc [
+              "session_id", `String session_id;
+              "desc", desc
+            ]
           ) () in
           reply json
     )
