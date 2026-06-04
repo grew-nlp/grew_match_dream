@@ -607,21 +607,21 @@ let save param =
   with Not_found -> raise (Error (`Assoc [("message", `String "save service: not connected")]))
 
 (* ============================================================================================================================ *)
-let get_single (param : Yojson.Basic.t) : Yojson.Basic.t =
+let get_corpora_desc_upload (param : Yojson.Basic.t) : Yojson.Basic.t =
   let open Yojson.Basic.Util in
-  let single = param |> member "single" |> to_string in
-  match String_map.find_opt single !Global.corpora_map with
+  let corpus = param |> member "corpus" |> to_string in
+  match String_map.find_opt corpus !Global.corpora_map with
   | Some (corpus_desc,_) ->
     `List [
       `Assoc [
-        "id", `String "Grew_match_single";
+        "id", `String "Grew_match_upload";
         "mode", `String "syntax";
         "style", `String "single";
         "corpora", `List [Corpus_desc.to_json corpus_desc]
       ]
     ]
   | None ->
-    `Assoc [("id", `String single); ("error", `String "No description found")]
+    `Assoc [("id", `String corpus); ("error", `String "No description found")]
 
 (* ============================================================================================================================ *)
 let get_corpora_desc param =

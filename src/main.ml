@@ -146,7 +146,7 @@ let all_routes =
       ("search", search, true);
       ("search_multi", search_multi, true);
       ("get_corpora_desc", get_corpora_desc, false);
-      ("get_single", get_single, false);
+      ("get_corpora_desc_upload", get_corpora_desc_upload, false);
       ("conll", conll, true);
       ("count", count, true);
       ("count_multi", count_multi, true);
