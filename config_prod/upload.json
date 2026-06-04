@@ -1,0 +1,8 @@
+{
+	"port": 10024,
+	"prefix": "gmd-upload",
+	"corpusbank": "/home/guillaum/grew-match-upload/corpusbank",
+	"upload": "/home/guillaum/grew-match-upload/data",
+	"log": "/home/guillaum/grew-match-upload/log",
+	"storage": "/Users/guillaum/github/grew-nlp/grew_match_dream/static"
+}
