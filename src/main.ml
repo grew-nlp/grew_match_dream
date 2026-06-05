@@ -104,6 +104,7 @@ let new_corpus_route =
               String_map.find_opt "name" param_map |> CCOption.map (fun v -> ("name", `String v));
               Some ("snippets", `String snippets);
               Some ("directory", `String upload_dir);
+              (match String_map.find_opt "schema" param_map with Some "Parseme" -> Some("files", `String ".cupt") | _ -> None)
             ] 
             |> CCList.filter_map CCFun.id
             |> (fun x -> `Assoc x)
