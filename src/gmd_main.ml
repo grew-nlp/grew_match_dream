@@ -339,6 +339,15 @@ let count_multi param =
   |> (fun l -> `Assoc l)
 
 (* ============================================================================================================================ *)
+(* Since UD 2.18, there are treebanks with mixed of RTL/LTR sentences 
+   UD_Brahui-Kholum@2.18 uses sentence metadata [rtl = true] *)
+let is_rtl corpus_desc graph =
+  match (Corpus_desc.get_flag "rtl" corpus_desc, Graph.get_meta_opt "rtl" graph) with
+  | (_, Some "yes") -> true
+  | (true, _) -> true
+  | _ -> false
+
+(* ============================================================================================================================ *)
 (* produce 10 more solutions *)
 let more_results param =
   try
@@ -350,7 +359,6 @@ let more_results param =
     let (_,corpus,corpus_desc) = Table.get_corpus cluster.corpus_id in
     let config = Corpus_desc.get_config corpus_desc in
     let audio = Corpus_desc.get_flag "audio" corpus_desc in
-    let rtl = Corpus_desc.get_flag "rtl" corpus_desc in
     let start_index = cluster.next in
     let max_index = Array.length (cluster.data) in
     let stop_index = min (start_index + Global.nbre_sol_page) max_index in
@@ -420,6 +428,7 @@ let more_results param =
                   | _ -> None in
                 let filter = Draw_config.filter session.Session.draw_config in
                 let dep = Graph.to_dep ~filter ~pid:session.Session.draw_config.pid ~deco ~config graph in
+                let rtl = is_rtl corpus_desc graph in
                 save_dep uuid ?audio_info rtl filename list_item sent_with_context meta_list dep
               | Some depth ->
                   let subgraph =
@@ -583,7 +592,7 @@ let parallel param =
         let filter = Draw_config.filter session.draw_config in
         let dep = Graph.to_dep ~filter ~config graph in
         let d2p =
-          try Dep2pictlib.from_dep ~rtl:(Corpus_desc.get_flag "rtl" corpus_desc) dep
+          try Dep2pictlib.from_dep ~rtl:(is_rtl corpus_desc graph) dep
           with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)])) in
         let _ = Dep2pictlib.save_svg ~filename d2p in
         `String basename
