@@ -3,7 +3,7 @@ import requests
 url = "http://localhost:10024/new_corpus"
 
 payload = {
-  "schema": "mSUD"
+  "schema": "SUD"
 }
 files=[
   ('files',('ParisStories_2019_concoursEquitation.conllu',open('/Users/guillaum/github/surfacesyntacticud/SUD_French-ParisStories/ParisStories_2019_concoursEquitation.conllu','rb'),'application/octet-stream')),

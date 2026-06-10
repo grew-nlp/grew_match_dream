@@ -124,7 +124,7 @@ module Log = struct
   let info s = Printf.ksprintf _info s
 end
 
-exception Request_too_large
+exception Stream_error of string
 
 (* ================================================================================ *)
 let wrap fct last_arg =
@@ -154,6 +154,20 @@ let _reply_error s =
 
 let reply_error s = Printf.ksprintf _reply_error s
 
+let safe_filename name =
+  if name = "" then raise (Stream_error "Empty filename");
+  List.iter 
+    (fun (regexp, msg) ->
+      try 
+        ignore (Str.search_forward regexp name 0); 
+        raise (Stream_error (sprintf "Illegal file name '%s': %s" name msg)) 
+      with Not_found -> ()
+    ) [
+      (Str.regexp_string Filename.dir_sep, sprintf "no dir_sep '%s' allowed in filename" Filename.dir_sep);
+      (Str.regexp_string "..", "no '..' allowed in filename");
+      (Str.regexp "^\\.", "no hidden file allowed");
+    ]
+
 (* General function for handling request with a mix of parameter and files *)
 let stream_request ?upload_dir request =
   let size = ref 0 in
@@ -173,14 +187,15 @@ let stream_request ?upload_dir request =
       end
     | Some (_, Some filename, _) ->
       match upload_dir with
-      | None -> stop "No `upload_dir` specified in stream_request"
+      | None -> raise (Stream_error "No `upload_dir` specified in stream_request")
       | Some dir -> 
-      let out_ch = open_out (Filename.concat dir filename) in
-      let rec save_chunk () =
-        if !size > max_request_size then raise Request_too_large;
-        match%lwt Dream.upload_part request with
-        | None -> close_out out_ch; loop (param_map, filename :: file_list)
-        | Some chunk -> 
+        safe_filename filename;
+        let out_ch = open_out (Filename.concat dir filename) in
+        let rec save_chunk () =
+          if !size > max_request_size then raise (Stream_error "Request too large");
+          match%lwt Dream.upload_part request with
+          | None -> close_out out_ch; loop (param_map, filename :: file_list)
+          | Some chunk -> 
             size := !size + String.length chunk;
             fprintf out_ch "%s%!" chunk;
             save_chunk () in
@@ -189,6 +204,6 @@ let stream_request ?upload_dir request =
   Lwt.catch
     (fun () -> loop (String_map.empty, []))
     (function
-      | Request_too_large -> Lwt.return (String_map.singleton "ERROR" "Request too large", [])
+      | Stream_error msg -> Lwt.return (String_map.singleton "ERROR" msg, [])
       | ex -> Lwt.fail ex)
 
