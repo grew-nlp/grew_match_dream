@@ -3,7 +3,7 @@ open Conll
 open Grewlib
 
 exception Error of Yojson.Basic.t
-let _error s = raise (Error (`String (sprintf "%s\n%!" s)))
+let _error s = raise (Error (`String (sprintf "%s" s)))
 let error s = Printf.ksprintf _error s
 
 let _stop s = 

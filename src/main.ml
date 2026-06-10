@@ -103,13 +103,12 @@ let new_corpus_route =
               Some ("config", `String config);
               String_map.find_opt "name" param_map |> CCOption.map (fun v -> ("name", `String v));
               Some ("snippets", `String snippets);
+              Some ("dynamic", `Bool true);
               Some ("directory", `String upload_dir);
               (match String_map.find_opt "schema" param_map with Some "Parseme" -> Some("files", `String ".cupt") | _ -> None)
-            ] 
+            ]
             |> CCList.filter_map CCFun.id
-            |> (fun x -> `Assoc x)
-          
-          in
+            |> (fun x -> `Assoc x) in
             Corpus_desc.compile (Corpus_desc.of_json corpus_desc);
             let desc_file = concat_filenames [upload_dir; "_build_grew"; session_id; "desc.json"] in
             let desc = Yojson.Basic.from_file desc_file in
