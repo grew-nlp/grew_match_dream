@@ -65,7 +65,7 @@ module Table = struct
 
   let get_corpus corpus_id =
     match String_map.find_opt corpus_id !Global.corpora_map with
-    | None -> raise (Error (`Assoc [("message", `String "Unknown corpus"); ("corpus_id", `String corpus_id)]))
+    | None -> raise (Gmd_error (`Assoc [("message", `String "Unknown corpus"); ("corpus_id", `String corpus_id)]))
     | Some (corpus_desc, corpus_index) ->
       match !t.(corpus_index) with
       | Some (corpus,_) ->
@@ -73,7 +73,7 @@ module Table = struct
         (corpus_index, corpus, corpus_desc)
       | None ->
         match Corpus_desc.load_corpus_opt corpus_desc with
-        | None -> raise (Error (`Assoc [("message", `String "[get_corpus] No marshal file"); ("corpus_id", `String (Corpus_desc.get_id corpus_desc))]))
+        | None -> raise (Gmd_error (`Assoc [("message", `String "[get_corpus] No marshal file"); ("corpus_id", `String (Corpus_desc.get_id corpus_desc))]))
         | Some corpus ->
           !t.(corpus_index) <- Some (corpus, Unix.gettimeofday ());
           (corpus_index, corpus, corpus_desc)

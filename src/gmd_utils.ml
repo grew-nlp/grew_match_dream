@@ -101,14 +101,14 @@ let get_attr_opt field json =
 let get_attr field json =
   match get_attr_opt field json with
   | Some s -> s
-  | None -> raise (Error (`Assoc [("message", `String (sprintf "No field `%s`" field)); ("json", json)]))
+  | None -> raise (Gmd_error (`Assoc [("message", `String (sprintf "No field `%s`" field)); ("json", json)]))
 
 let get_string_attr_opt field json =
   let open Yojson.Basic.Util in
   try json |> member field |> to_string_option
   with Type_error (msg,_) -> 
     raise (
-      Error (
+      Gmd_error (
         `Assoc 
           [
             ("error", `String (sprintf "Cannot get string field `%s`" field));
@@ -121,17 +121,17 @@ let get_string_attr_opt field json =
 let get_string_attr field json =
   match get_string_attr_opt field json with
   | Some s -> s
-  | None -> raise (Error (`Assoc [("message", `String (sprintf "No field `%s`" field)); ("json", json)]))
+  | None -> raise (Gmd_error (`Assoc [("message", `String (sprintf "No field `%s`" field)); ("json", json)]))
 
 let get_int_attr field json =
   let open Yojson.Basic.Util in
   try json |> member field |> to_int
-  with Type_error _ ->  raise (Error (`Assoc [("message", `String (sprintf "No int field `%s`" field)); ("json", json)]))
+  with Type_error _ ->  raise (Gmd_error (`Assoc [("message", `String (sprintf "No int field `%s`" field)); ("json", json)]))
 
 let get_path_attr field json =
   let open Yojson.Basic.Util in
   try json |> member field |> to_list |> List.map to_int
-  with Type_error _ ->  raise (Error (`Assoc [("message", `String (sprintf "No path (i.e. int list) field `%s`" field)); ("json", json)]))
+  with Type_error _ ->  raise (Gmd_error (`Assoc [("message", `String (sprintf "No path (i.e. int list) field `%s`" field)); ("json", json)]))
 
 let get_named_path_attr field json =
   let open Yojson.Basic.Util in
@@ -143,16 +143,16 @@ let get_named_path_attr field json =
       (function 
       | `String "__undefined__" -> None 
       | `String s -> Some s 
-      | _ -> raise (Error (`Assoc [("message", `String (sprintf "Some element is not of type string in field `%s`" field)); ("json", json)]))
+      | _ -> raise (Gmd_error (`Assoc [("message", `String (sprintf "Some element is not of type string in field `%s`" field)); ("json", json)]))
       ) 
-  with Type_error _ ->  raise (Error (`Assoc [("message", `String (sprintf "No path (i.e. string list) field `%s`" field)); ("json", json)]))
+  with Type_error _ ->  raise (Gmd_error (`Assoc [("message", `String (sprintf "No path (i.e. string list) field `%s`" field)); ("json", json)]))
 
 let get_bool_attr_opt field json =
   let open Yojson.Basic.Util in
   try json |> member field |> to_bool_option
   with Type_error (msg,_) -> 
     raise (
-      Error (
+      Gmd_error (
         `Assoc 
           [
             ("error", `String (sprintf "Cannot get bool field `%s`" field));
@@ -295,7 +295,7 @@ let save_dep uuid ?audio_info rtl base sent_id sentence meta dep =
         CCOption.map (fun s -> ("audio", `String s)) audio_info;
       ]) in 
     data
-  with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)]))
+  with Dep2pictlib.Error json -> raise (Gmd_error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)]))
 
 (* ============================================================================================================================ *)
 let save_dot uuid base sent_id graph sentence meta dot =

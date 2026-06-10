@@ -175,5 +175,5 @@ let _ =
     @@ cors_middleware
     @@ Dream.logger
     @@ Dream.router all_routes
-  with Error msg -> 
+  with Gmd_error msg -> 
     stop "%s" (Yojson.Basic.pretty_to_string msg)

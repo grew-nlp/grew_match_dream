@@ -4,8 +4,8 @@ open Grewlib
 
 let max_request_size = 100 * 1024 * 1024
 
-exception Error of Yojson.Basic.t
-let _error s = raise (Error (`String (sprintf "%s" s)))
+exception Gmd_error of Yojson.Basic.t
+let _error s = raise (Gmd_error (`String (sprintf "%s" s)))
 let error s = Printf.ksprintf _error s
 
 let _stop s = 
@@ -22,7 +22,7 @@ let report_status json =
   | _ -> Yojson.Basic.pretty_to_string json
 
 (* [extend_path path] replaces each substring "${XXX}" in [path] by the value of the env variable XXX.
-   raise [Error] if some variable is undefined. *)
+   raise [Gmd_error] if some variable is undefined. *)
 let extend_path path =
   Str.global_substitute
     (Str.regexp {|\${\([^}]*\)}|})
@@ -137,7 +137,7 @@ let wrap fct last_arg =
       | [] -> `Assoc [ ("status", `String "OK"); ("data", data) ]
       | l -> `Assoc [ ("status", `String "WARNING"); ("messages", `List l); ("data", data) ]
     with
-    | Error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
+    | Gmd_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
     | Sys_error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]
     | Conll_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
     | Grewlib.Error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]

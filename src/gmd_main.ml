@@ -448,7 +448,7 @@ let more_results param =
         }
         !Client_map.t;
     `Assoc [("more", `Bool more_flag); ("items", `List json_list)]
-  with Not_found -> raise (Error (`Assoc [("message", `String "more_results service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "more_results service: not connected")]))
 
 (* ============================================================================================================================ *)
 let tsv_export param = 
@@ -514,7 +514,7 @@ let tsv_export param =
 
     close_out out_ch;
     `Null
-  with Not_found -> raise (Error (`Assoc [("message", `String "export service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "export service: not connected")]))
 
 (* ============================================================================================================================ *)
 let conll_export param =
@@ -554,7 +554,7 @@ let conll_export param =
 
     close_out out_ch;
     `Null
-  with Not_found -> raise (Error (`Assoc [("message", `String "conll_export service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "conll_export service: not connected")]))
 
 (* ============================================================================================================================ *)
 let conll param =
@@ -570,7 +570,7 @@ let conll param =
     let columns = Corpus.get_columns_opt corpus in
     let graph = Corpus.get_graph occ.Session.graph_index corpus in
     `String (graph |> Graph.to_json |> Conll.of_json |> (Conll.to_string ?columns ~config))
-  with Not_found -> raise (Error (`Assoc [("message", `String "conll service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "conll service: not connected")]))
 
 (* ============================================================================================================================ *)
 let parallel param = 
@@ -580,7 +580,7 @@ let parallel param =
     let (_,corpus,corpus_desc) = Table.get_corpus corpus_id in
     let sent_id = get_string_attr "sent_id" param in
     match Corpus.graph_of_sent_id sent_id corpus with
-    | None -> raise (Error (`Assoc [("message", `String "Unknown sent_id"); ("sent_id", `String sent_id)]))
+    | None -> raise (Gmd_error (`Assoc [("message", `String "Unknown sent_id"); ("sent_id", `String sent_id)]))
     | Some graph ->
       let uuid = get_string_attr "uuid" param in
       let config = Corpus_desc.get_config corpus_desc in
@@ -593,7 +593,7 @@ let parallel param =
         let dep = Graph.to_dep ~filter ~config graph in
         let d2p =
           try Dep2pictlib.from_dep ~rtl:(is_rtl corpus_desc graph) dep
-          with Dep2pictlib.Error json -> raise (Error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)])) in
+          with Dep2pictlib.Error json -> raise (Gmd_error (`Assoc [("message", `String "Dep2pict error"); ("sent_id", `String sent_id); ("json", json)])) in
         let _ = Dep2pictlib.save_svg ~filename d2p in
         `String basename
       | false ->
@@ -603,7 +603,7 @@ let parallel param =
         close_out out_ch;
         ignore (Sys.command (sprintf "dot -Tsvg -o %s %s" filename temp_file_name));
         `String basename
-  with Not_found -> raise (Error (`Assoc [("message", `String "parallel service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "parallel service: not connected")]))
 
 (* ============================================================================================================================ *)
 let save param =
@@ -613,7 +613,7 @@ let save param =
     let filename = Filename.concat folder (uuid ^ ".json") in
     Yojson.Basic.to_file filename param;
     `Null
-  with Not_found -> raise (Error (`Assoc [("message", `String "save service: not connected")]))
+  with Not_found -> raise (Gmd_error (`Assoc [("message", `String "save service: not connected")]))
 
 (* ============================================================================================================================ *)
 let get_corpora_desc_upload (param : Yojson.Basic.t) : Yojson.Basic.t =
