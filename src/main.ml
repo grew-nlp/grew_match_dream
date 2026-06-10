@@ -90,6 +90,10 @@ let new_corpus_route =
         | (param_map,_) ->
           let json = wrap
           (fun () -> 
+            let _ = match String_map.find_opt "ERROR" param_map with
+            | Some msg -> error "%s" msg
+            | None -> () in
+
             let (config, snippets) =
             match String_map.find_opt "schema" param_map with 
             | Some "UD" -> ("ud", "ud")

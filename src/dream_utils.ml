@@ -2,6 +2,8 @@ open Printf
 open Conll
 open Grewlib
 
+let max_request_size = 100 * 1024 * 1024
+
 exception Error of Yojson.Basic.t
 let _error s = raise (Error (`String (sprintf "%s" s)))
 let error s = Printf.ksprintf _error s
@@ -122,6 +124,8 @@ module Log = struct
   let info s = Printf.ksprintf _info s
 end
 
+exception Request_too_large
+
 (* ================================================================================ *)
 let wrap fct last_arg =
   warnings := [];
@@ -151,7 +155,8 @@ let _reply_error s =
 let reply_error s = Printf.ksprintf _reply_error s
 
 (* General function for handling request with a mix of parameter and files *)
-let stream_request ?upload_dir request = 
+let stream_request ?upload_dir request =
+  let size = ref 0 in
   let buff = Buffer.create 32 in
   let rec loop (param_map, file_list) =
     match%lwt Dream.upload request with
@@ -172,9 +177,18 @@ let stream_request ?upload_dir request =
       | Some dir -> 
       let out_ch = open_out (Filename.concat dir filename) in
       let rec save_chunk () =
+        if !size > max_request_size then raise Request_too_large;
         match%lwt Dream.upload_part request with
         | None -> close_out out_ch; loop (param_map, filename :: file_list)
-        | Some chunk -> fprintf out_ch "%s%!" chunk; save_chunk () in
+        | Some chunk -> 
+            size := !size + String.length chunk;
+            fprintf out_ch "%s%!" chunk;
+            save_chunk () in
       save_chunk () in
-  loop (String_map.empty, [])
+
+  Lwt.catch
+    (fun () -> loop (String_map.empty, []))
+    (function
+      | Request_too_large -> Lwt.return (String_map.singleton "ERROR" "Request too large", [])
+      | ex -> Lwt.fail ex)
 
