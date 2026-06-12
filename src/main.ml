@@ -76,6 +76,9 @@ let cors_middleware handler req =
       |> ignore;
       Lwt.return res
 
+let rec generate_token = function
+  | 0 -> ""
+  | n -> Printf.sprintf "%04x%s" (Random.int 0xFFFF) (generate_token (n-1))
 
 let new_corpus_route =
   Dream.post "new_corpus"
@@ -83,8 +86,8 @@ let new_corpus_route =
       match Dream_config.get_string_opt "upload" with
       | None -> wrap (fun () -> error "Missing `upload` in config") () |> reply
       | Some upload ->
-        let session_id = Printf.sprintf "%04x%04x%04x%04x" (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) (Random.int 0xFFFF) in
-        let upload_dir = Filename.concat upload session_id in
+        let new_folder = generate_token 4 in
+        let upload_dir = Filename.concat upload new_folder in
         FileUtil.mkdir ~parent:true upload_dir;
         match%lwt stream_request ~upload_dir request with
         | (param_map,_) ->
@@ -93,6 +96,19 @@ let new_corpus_route =
             let _ = match String_map.find_opt "ERROR" param_map with
             | Some msg -> error "%s" msg
             | None -> () in
+
+            let (session_id, new_token_opt) = 
+            match String_map.find_opt "token" param_map with
+            | Some "" -> (new_folder, Some (generate_token 8))
+            | Some token ->
+                begin
+                  match Table.find_from_token_opt token with
+                  | Some (previous_id, dir) ->
+                      FileUtil.rm ~recurse:true [dir];
+                      (previous_id, Some token)
+                  | None -> (new_folder, Some (generate_token 8))
+                end
+            | None -> (new_folder, None) in
 
             let (config, snippets) =
             match String_map.find_opt "schema" param_map with 
@@ -108,6 +124,7 @@ let new_corpus_route =
               String_map.find_opt "name" param_map |> CCOption.map (fun v -> ("name", `String v));
               Some ("snippets", `String snippets);
               Some ("dynamic", `Bool true);
+              (match new_token_opt with Some t -> Some ("token", `String t) | _ -> None);
               Some ("directory", `String upload_dir);
               (match String_map.find_opt "schema" param_map with Some "Parseme" -> Some("files", `String ".cupt") | _ -> None)
             ]
@@ -120,11 +137,14 @@ let new_corpus_route =
               (Filename.concat corpusbank (session_id ^ ".json"))
               (`List [corpus_desc]);
             load_data();
-            `Assoc [
-              "session_id", `String session_id;
-              "desc", desc
+            [
+              Some ("session_id", `String session_id);
+              (match new_token_opt with Some t -> Some ("token", `String t) | _ -> None);
+              Some ("desc", desc);
             ]
-          ) () in
+            |> CCList.filter_map CCFun.id
+            |> (fun x -> `Assoc x)
+           ) () in
           reply json
     )
 

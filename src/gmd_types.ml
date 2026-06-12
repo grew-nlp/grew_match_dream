@@ -63,6 +63,19 @@ module Table = struct
     Log.info "[INTERN] Refresh table: |free|=%d |kept|=%d" !free !kept;
     ()
 
+  let find_from_token_opt token =
+    let exception Found of (string * string) in
+    try
+      String_map.iter
+        (fun id (desc,_) ->
+          match Corpus_desc.get_field_opt "token" desc with
+          | Some t when t = token -> raise (Found (id, Corpus_desc.get_directory desc))
+          | _ -> ()
+        )
+        !Global.corpora_map;
+        None
+    with Found id_dir -> Some id_dir
+
   let get_corpus corpus_id =
     match String_map.find_opt corpus_id !Global.corpora_map with
     | None -> raise (Gmd_error (`Assoc [("message", `String "Unknown corpus"); ("corpus_id", `String corpus_id)]))
