@@ -252,31 +252,38 @@ module Draw_config = struct
 end
 
 let layered_meta meta =
-  let sorted_meta = List.sort Stdlib.compare meta in
-  let rec loop acc = function
-    | [] -> acc
-    | (k, v) :: tail ->
-        let parts = String.split_on_char '>' k in
-        begin match (acc, parts) with
-        | ((main_k, (main_v, sub_list)) :: tail_acc, [main; sub]) 
-          when main = main_k ->
-            loop ((main_k, (main_v, (sub, v) :: sub_list)) :: tail_acc) tail
-        | _ -> 
-            loop ((k, (v, [])) :: acc) tail
-        end in
-  let nested_meta = loop [] sorted_meta in
-  let (json : Yojson.Basic.t) = `List (
-    List.map 
-      (fun (k,(v,sub)) -> 
-        `Assoc [
-          "key", `String k;
-          "value", `String v;
-          "sub", `Assoc (List.map (fun (sk,sv) -> (sk, `String sv)) sub)
-        ]
-      ) nested_meta
-    ) in
-  json
 
+  let rec loop = function
+    | [] -> String_map.empty
+    | (k, v) :: tail ->
+      let acc = loop tail in
+      match String.split_on_char '>' k with
+      | main :: ((_::_) as subkey_list) ->
+        let subkey = String.concat ">" subkey_list in
+        let prev = String_map.find_opt main acc |> Option.value ~default:[] in
+        String_map.add main ((subkey, `String v)::prev) acc 
+      | _ -> acc in
+
+  let map = loop meta in
+
+  `List (
+    List.filter_map
+      (fun (k,v) ->
+        if String.contains k '>' then
+          None
+        else 
+          let sub = 
+            String_map.find_opt k map
+            |> Option.map (fun subs -> List.rev subs)
+            |> Option.value ~default:[] in
+          Some (
+            `Assoc [
+              "key", `String k;
+              "value", `String v;
+              "sub", `Assoc sub;
+          ])
+      ) meta
+    )
 
 (* ============================================================================================================================ *)
 let save_dep uuid ?audio_info rtl base sent_id sentence meta dep =

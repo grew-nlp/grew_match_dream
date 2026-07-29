@@ -137,10 +137,10 @@ let wrap fct last_arg =
       | [] -> `Assoc [ ("status", `String "OK"); ("data", data) ]
       | l -> `Assoc [ ("status", `String "WARNING"); ("messages", `List l); ("data", data) ]
     with
-    | Gmd_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
-    | Sys_error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]
-    | Conll_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("message", json_msg) ]
-    | Grewlib.Error msg -> `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ]
+    | Gmd_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("exception", `String "Gmd_error"); ("message", json_msg) ]
+    | Sys_error msg -> `Assoc [ ("status", `String "ERROR"); ("exception", `String "Sys_error");  ("message", `String msg) ]
+    | Conll_error json_msg -> `Assoc [ ("status", `String "ERROR"); ("exception", `String "Conll_error");  ("message", json_msg) ]
+    | Grewlib.Error msg -> `Assoc [ ("status", `String "ERROR"); ("exception", `String "Grwlib.Error");  ("message", `String msg) ]
     | exc -> 
       let msg = sprintf "BUG [Unexpected exception], please report (%s)" (Printexc.to_string exc) in
         `Assoc [ ("status", `String "ERROR"); ("message", `String msg) ] in
