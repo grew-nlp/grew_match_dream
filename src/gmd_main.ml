@@ -395,17 +395,23 @@ let more_results param =
               if session.draw_config.context
               then
                 let (prev_sent, new_left_bound) =
-                  match rich_sentence (index-1) with
-                  | (("",_,_),_) -> (None, None)
-                  | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                  | (_,sf) when sf <> document_id -> (None, None) (* different document *)
-                  | ((prev_text,prev_bounds,_),_) -> (Some prev_text, CCOption.map fst prev_bounds) in
+                  if index = 0 then
+                    (None, None)
+                  else
+                    match rich_sentence (index-1) with
+                    | (("",_,_),_) -> (None, None)
+                    | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
+                    | (_,sf) when sf <> document_id -> (None, None) (* different document *)
+                    | ((prev_text,prev_bounds,_),_) -> (Some prev_text, CCOption.map fst prev_bounds) in
                 let (next_sent, new_right_bound) =
-                  match rich_sentence (index+1) with
-                  | (("",_,_),_) -> (None, None)
-                  | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
-                  | (_,sf) when sf <> document_id -> (None, None) (* different document *)
-                  | ((next_text,next_bounds,_),_) -> (Some next_text, CCOption.map snd next_bounds) in
+                  if index > (Corpus.size corpus) - 1 then
+                    (None, None)
+                  else
+                    match rich_sentence (index+1) with
+                    | (("",_,_),_) -> (None, None)
+                    | ((_,_,url),_) when url <> sound_url -> (None, None) (* different sound_url *)
+                    | (_,sf) when sf <> document_id -> (None, None) (* different document *)
+                    | ((next_text,next_bounds,_),_) -> (Some next_text, CCOption.map snd next_bounds) in
                 (sprintf "%s<font color=\"#FC5235\">%s</font>%s"
                   (match prev_sent with None -> "" | Some p -> p^"</br>")
                   sentence
