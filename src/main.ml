@@ -123,6 +123,7 @@ let new_corpus_route =
               Some ("config", `String config);
               Some ("validation", `String config);
               String_map.find_opt "name" param_map |> CCOption.map (fun v -> ("name", `String v));
+              String_map.find_opt "lang" param_map |> CCOption.map (fun v -> ("lang", `String v));
               Some ("snippets", `String snippets);
               Some ("dynamic", `Bool true);
               Some ("audio", `Bool true);
