@@ -247,6 +247,7 @@ module Draw_config = struct
     | "textform" | "wordform" -> t.tf_wf
     | "SpaceAfter" -> false
     | "AlignBegin" | "AlignEnd" -> false
+    | "WordAlignmentBegin" | "WordAlignmentEnd" -> false
     | "_speaker" | "_start" | "_stop" -> false 
     | _ -> t.features
 end
